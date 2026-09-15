@@ -25,6 +25,8 @@ import {
   colorVars,
   radiusVars,
   borderVars,
+  durationVars,
+  easeVars,
 } from '../../../theme/tokens.stylex';
 import {tableRowMarker} from '../../table.stylex';
 import {Icon} from '../../../Icon';
@@ -33,6 +35,10 @@ import {resolveContextActions} from '../../tableContextMenu';
 import {useTableContext} from '../../useTableCellStyles';
 import {useTranslator} from '../../../i18n';
 import {rtlStyles} from '../../../utils';
+import {
+  hasInteractiveAncestor,
+  hasTextSelection,
+} from '../../../hooks/useClickableContainer';
 import type {
   TablePlugin,
   TableColumn,
@@ -71,17 +77,22 @@ export interface UseTableRowExpansionConfig<T extends Record<string, unknown>> {
   /**
    * Background behind the detail panel.
    *
-   * - `muted` (default): a wash marking the panel as commentary on the row
-   *   above rather than another row of data. In a bare table — no card, no
-   *   dividers — it is the only thing that says so.
-   * - `transparent`: the panel takes whatever surface is behind the table.
-   *   For a table already sitting on a Card or Section, where a second tint
-   *   reads as a third surface rather than as a distinction.
+   * - `transparent` (default): the panel paints nothing and takes whatever
+   *   surface is behind the table. The panel is the row's own continuation,
+   *   so it inherits the table's background the way the row does, and on a
+   *   striped table the zebra reads on unchanged — a panel is not a row, and
+   *   is not counted as one.
+   * - `muted`: a wash marking the panel as commentary on the row above rather
+   *   than another row of data. Reach for it in a bare table — no card, no
+   *   dividers, no striping — where nothing else distinguishes the panel from
+   *   the data around it. It is an opt-in, not the house style: a table on a
+   *   Card gets a third surface out of it, and a striped table gets a band in
+   *   the same token as the stripe, which reads as a data row.
    *
    * Worth knowing when choosing: the wash is a low-alpha near-black, so over a
    * dark card it is close to invisible. `muted` is largely a light-theme
-   * effect, and `transparent` is what dark themes look like already.
-   * @default 'muted'
+   * effect, and dark themes look like `transparent` either way.
+   * @default 'transparent'
    */
   panelVariant?: 'muted' | 'transparent';
   /**
@@ -101,6 +112,15 @@ export interface UseTableRowExpansionConfig<T extends Record<string, unknown>> {
 // Styles
 // =============================================================================
 
+/**
+ * The chevron column's width, in pixels.
+ *
+ * A column width is a number the layout does arithmetic on, not a CSS value,
+ * so this cannot be a token reference — but it is the pixel value of
+ * `--spacing-10`, and the panel's indent (which has to line up with the first
+ * real column) spells it as the token. The unit test pins the two together so
+ * a change to the scale cannot silently unalign them.
+ */
 const EXPANSION_COLUMN_WIDTH_PX = 40;
 const EXPANSION_COLUMN_WIDTH = {
   type: 'pixel' as const,
@@ -126,7 +146,8 @@ const expansionStyles = stylex.create({
     // button is the hit target and carries the hover chip, and turning that
     // swings the rounded rectangle and its highlight around with the arrow.
     transitionProperty: 'color',
-    transitionDuration: '150ms',
+    transitionDuration: durationVars['--duration-fast'],
+    transitionTimingFunction: easeVars['--ease-standard'],
     padding: 0,
     // Match IconButton ghost hover: subtle overlay background.
     backgroundImage: {
@@ -141,7 +162,8 @@ const expansionStyles = stylex.create({
   },
   chevron: {
     transitionProperty: 'transform',
-    transitionDuration: '150ms',
+    transitionDuration: durationVars['--duration-fast'],
+    transitionTimingFunction: easeVars['--ease-standard'],
   },
   // The RTL mirror is folded into each state's transform rather than living
   // on a parent span, matching TreeListItem's chevron (both are `transform`,
@@ -335,7 +357,7 @@ export function useTableRowExpansion<T extends Record<string, unknown>>(
     renderExpanded,
     getIsItemExpandable,
     hasRowClickExpansion,
-    panelVariant = 'muted',
+    panelVariant = 'transparent',
   } = config;
 
   const t = useTranslator();
@@ -450,16 +472,20 @@ export function useTableRowExpansion<T extends Record<string, unknown>>(
                   // Don't hijack clicks on interactive cell content (the
                   // chevron already stops propagation, but a composed
                   // selection checkbox, link, or action button does not) or a
-                  // text selection.
-                  const target = event.target as HTMLElement;
-                  if (
-                    target.closest(
-                      'button, a, input, select, textarea, [role="button"], [role="checkbox"], [contenteditable="true"]',
-                    )
-                  ) {
+                  // text selection. Both rules come from
+                  // `useClickableContainer`, the same pair every clickable
+                  // surface in the system uses — the hook itself wants a ref
+                  // we have no way to hand it from inside `transformBodyRow`,
+                  // so this shares its guards rather than its plumbing.
+                  const row = event.currentTarget;
+                  const target = event.target;
+                  if (!(target instanceof Element)) {
                     return;
                   }
-                  if ((window.getSelection()?.toString() ?? '') !== '') {
+                  if (target !== row && hasInteractiveAncestor(target, row)) {
+                    return;
+                  }
+                  if (hasTextSelection(row)) {
                     return;
                   }
                   props.htmlProps.onClick?.(event);
@@ -477,6 +503,11 @@ export function useTableRowExpansion<T extends Record<string, unknown>>(
         const panel = (
           <tr
             key={`${key}-expanded`}
+            // A panel is its row's continuation, not a row of its own. Striping
+            // counts `:nth-child(even of :not([data-expansion-panel]))`, so this
+            // attribute is what keeps an open panel from inverting the zebra of
+            // every row beneath it. Load-bearing, not diagnostic.
+            data-expansion-panel=""
             {...stylex.props(
               // Carries the marker so the panel cell's divider can ask whether
               // this row is the table's last, the same way TableCell does.

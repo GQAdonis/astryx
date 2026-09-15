@@ -6,6 +6,7 @@ import {useState} from 'react';
 import {Table} from '../../Table';
 import type {TableColumn} from '../../types';
 import {useTableRowExpansion} from './useTableRowExpansion';
+import {spacingDefaults} from '../../../theme/tokens.stylex';
 import {InternationalizationProvider} from '../../../i18n';
 
 // popover mock for context-menu tests
@@ -63,6 +64,7 @@ function Harness({
   columnsOverride,
   panelVariant,
   dividers,
+  isStriped,
 }: {
   initialExpanded?: Set<string>;
   isItemExpandable?: (item: Row) => boolean;
@@ -72,6 +74,7 @@ function Harness({
   columnsOverride?: TableColumn<Row>[];
   panelVariant?: 'muted' | 'transparent';
   dividers?: 'rows' | 'columns' | 'grid' | 'none';
+  isStriped?: boolean;
 }) {
   const [expandedKeys, setExpandedKeys] = useState(initialExpanded);
   const expansion = useTableRowExpansion<Row>({
@@ -99,6 +102,7 @@ function Harness({
       idKey="id"
       density={density}
       dividers={dividers}
+      isStriped={isStriped}
       plugins={{expansion}}
     />
   );
@@ -243,6 +247,16 @@ describe('useTableRowExpansion (detail panel)', () => {
     });
   });
 
+  it('sizes the chevron column at the spacing token the panel indents by', () => {
+    // The column width is a number the layout does arithmetic on, so it cannot
+    // be a token reference — but the panel's indent, which has to line up with
+    // the first column, spells it as `--spacing-10`. Pin the two together so a
+    // change to the scale cannot silently unalign them.
+    render(<Harness initialExpanded={new Set(['a'])} />);
+    const chevronHeader = screen.getAllByRole('columnheader')[0];
+    expect(chevronHeader).toHaveStyle({width: spacingDefaults['--spacing-10']});
+  });
+
   describe('row divider placement', () => {
     const panelCell = () =>
       screen.getByTestId('panel').closest('td') as HTMLTableCellElement;
@@ -289,20 +303,76 @@ describe('useTableRowExpansion (detail panel)', () => {
     const panelRow = () =>
       screen.getByTestId('panel').closest('tr') as HTMLTableRowElement;
 
-    it('washes the panel by default', () => {
+    it('leaves the panel on the surface behind the table by default', () => {
+      // The panel is the row's continuation, not a surface of its own: it
+      // takes whatever the table sits on, the way the row does.
       render(<Harness initialExpanded={new Set(['a'])} />);
-      expect(panelRow()).toHaveStyle({
+      expect(panelRow()).not.toHaveStyle({
         backgroundColor: 'var(--color-background-muted)',
       });
     });
 
-    it('leaves the panel on the surface behind the table when transparent', () => {
-      render(
-        <Harness initialExpanded={new Set(['a'])} panelVariant="transparent" />,
-      );
-      expect(panelRow()).not.toHaveStyle({
+    it('washes the panel when muted is asked for', () => {
+      render(<Harness initialExpanded={new Set(['a'])} panelVariant="muted" />);
+      expect(panelRow()).toHaveStyle({
         backgroundColor: 'var(--color-background-muted)',
       });
+    });
+  });
+
+  describe('zebra striping', () => {
+    /**
+     * jsdom's selector engine does not implement `:nth-child(… of S)` — it
+     * matches nothing and reports no error — so the paint itself cannot be
+     * asserted here; the browser-side check is the visual regression suite.
+     * What this can pin is the two halves of the contract: the panel is a
+     * sibling row in the same tbody (which is what makes an exclusion
+     * necessary at all), and every stripe rule counts only rows that are not
+     * panels.
+     */
+    const stripeRules = () => {
+      const out: string[] = [];
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          for (const rule of Array.from(sheet.cssRules)) {
+            if (rule.cssText.includes(':nth-child(even')) {
+              out.push(rule.cssText);
+            }
+          }
+        } catch {
+          // cross-origin sheet; nothing of ours lives there
+        }
+      }
+      return out;
+    };
+
+    it('counts stripes over data rows only, so an open panel cannot flip them', () => {
+      render(<Harness isStriped initialExpanded={new Set(['a'])} />);
+
+      // The panel really is a row among the rows — left in the count, it takes
+      // the stripe meant for the row below it and inverts everything after.
+      const bodyRows = Array.from(
+        document.querySelectorAll<HTMLTableRowElement>('tbody > tr'),
+      );
+      expect(bodyRows).toHaveLength(4);
+      expect(bodyRows[1]).toHaveAttribute('data-expansion-panel');
+
+      const rules = stripeRules();
+      expect(rules.length).toBeGreaterThan(0);
+      for (const rule of rules) {
+        expect(rule).toContain('of :not([data-expansion-panel])');
+      }
+    });
+
+    it('marks the panel row so the stripe rule can skip it', () => {
+      // The attribute is what the selector keys off, so it is contract, not
+      // decoration — losing it silently restores the parity shift above.
+      render(<Harness initialExpanded={new Set(['a'])} isStriped />);
+      const panels = Array.from(
+        document.querySelectorAll<HTMLTableRowElement>('tbody tr'),
+      ).filter(r => r.hasAttribute('data-expansion-panel'));
+      expect(panels).toHaveLength(1);
+      expect(panels[0]).toHaveTextContent('Ada: Ada bio');
     });
   });
 
@@ -365,13 +435,40 @@ describe('useTableRowExpansion (detail panel)', () => {
 
     it('yields to a text selection', () => {
       // Dragging across a cell to copy it ends in a click. Toggling then would
-      // shift the row out from under the text the reader just selected.
+      // shift the row out from under the text the reader just selected. The
+      // selection has to be anchored inside the row: one somewhere else on the
+      // page is not this row's business, which is why the shared guard scopes
+      // it to the node rather than asking the document for any selection.
       render(<Harness hasRowClickExpansion />);
-      const selection = {toString: () => 'Ada'} as Selection;
-      const spy = vi.spyOn(window, 'getSelection').mockReturnValue(selection);
-      fireEvent.click(screen.getByText('Ada'));
+      const cell = screen.getByText('Ada');
+      const selection = {
+        isCollapsed: false,
+        anchorNode: cell.firstChild ?? cell,
+        toString: () => 'Ada',
+      } as unknown as Selection;
+      const spy = vi.spyOn(document, 'getSelection').mockReturnValue(selection);
+      fireEvent.click(cell);
       expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
       spy.mockRestore();
+    });
+
+    it('toggles despite a text selection somewhere else on the page', () => {
+      // The old guard asked the document for any selection at all, so text
+      // selected in a sidebar made every row in the table inert.
+      render(<Harness hasRowClickExpansion />);
+      const outside = document.createElement('p');
+      outside.textContent = 'elsewhere';
+      document.body.appendChild(outside);
+      const selection = {
+        isCollapsed: false,
+        anchorNode: outside.firstChild,
+        toString: () => 'elsewhere',
+      } as unknown as Selection;
+      const spy = vi.spyOn(document, 'getSelection').mockReturnValue(selection);
+      fireEvent.click(screen.getByText('Ada'));
+      expect(screen.getByTestId('panel')).toBeInTheDocument();
+      spy.mockRestore();
+      outside.remove();
     });
 
     it('leaves non-expandable rows inert', () => {

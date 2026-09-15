@@ -45,8 +45,8 @@ export const docs = {
       name: 'panelVariant',
       type: "'muted' | 'transparent'",
       description:
-        "Background behind the detail panel. 'muted' washes it, marking it as commentary on the row above rather than another row of data — in a bare table with no dividers that wash is the only cue. 'transparent' takes whatever surface is behind the table, for a table already on a Card or Section where a second tint reads as a third surface. The wash is a low-alpha near-black, so it is close to invisible over a dark card: 'muted' is largely a light-theme effect.",
-      default: "'muted'",
+        "Background behind the detail panel. 'transparent' (default) paints nothing: the panel is the row's continuation and takes whatever surface the table sits on, so a Card shows through and a striped table's zebra reads on unchanged. 'muted' washes it, marking it as commentary rather than another row of data — reach for it in a bare table with no card, dividers or striping, where nothing else makes that distinction. The wash is a low-alpha near-black, so it is close to invisible over a dark card: 'muted' is largely a light-theme effect.",
+      default: "'transparent'",
     },
     {
       name: 'hasRowClickExpansion',
@@ -121,7 +121,7 @@ export const docsDense = {
     getIsItemExpandable:
       'Control which rows are expandable. Defaults to all rows expandable.',
     panelVariant:
-      "Detail panel background: 'muted' (default) washes it; 'transparent' takes the surface behind the table, for a table already on a Card.",
+      "Detail panel background: 'transparent' (default) paints nothing, so the panel takes the surface behind the table and leaves a striped table's zebra alone; 'muted' washes it, for a bare table where nothing else separates the panel from the data.",
     hasRowClickExpansion:
       'Toggle a row by clicking anywhere on it, not just the chevron; pointer-only, skips interactive cell content and text selections. Defaults to false.',
   },
