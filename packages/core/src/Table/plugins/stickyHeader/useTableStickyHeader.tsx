@@ -134,9 +134,18 @@ export function useTableStickyHeader<T extends Record<string, unknown>>(
       return;
     }
     const update = () => {
+      const rect = head.getBoundingClientRect();
+      // AST-025 FR1/FR3: resolve the logical block axis through the computed
+      // writing mode before reading physical geometry. In vertical and
+      // sideways writing modes the block axis is horizontal, so the header's
+      // block extent is its width; publishing the physical height would clip
+      // the pinned heading and the collapse control.
+      const blockIsHorizontal = /^(vertical|sideways)/.test(
+        getComputedStyle(head).getPropertyValue('writing-mode'),
+      );
       el.style.setProperty(
         HEADER_HEIGHT_VAR,
-        `${head.getBoundingClientRect().height}px`,
+        `${blockIsHorizontal ? rect.width : rect.height}px`,
       );
     };
     const resizeObserver =

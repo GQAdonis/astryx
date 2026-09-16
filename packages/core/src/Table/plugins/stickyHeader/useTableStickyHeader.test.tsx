@@ -193,6 +193,43 @@ describe('useTableStickyHeader', () => {
     rect.mockRestore();
   });
 
+  it('publishes the block-axis extent in vertical writing modes, where block is horizontal', () => {
+    const rect = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue({
+        height: 44,
+        width: 120,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 44,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+    // jsdom does not implement writing-mode; pretend the thead is vertical.
+    const original = window.getComputedStyle.bind(window);
+    const computed = vi
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((el: Element) => {
+        if (el.tagName === 'THEAD') {
+          return {writingMode: 'vertical-rl'} as CSSStyleDeclaration;
+        }
+        return original(el);
+      });
+    function Harness() {
+      const stickyHeader = useTableStickyHeader<Row>({maxHeight: 480});
+      return <Table data={data} columns={columns} plugins={{stickyHeader}} />;
+    }
+    render(<Harness />);
+
+    // AST-025 FR1/FR3: the logical block axis resolves through the computed
+    // writing mode before reading physical geometry.
+    expect(publishedHeight()).toBe('120px');
+    rect.mockRestore();
+    computed.mockRestore();
+  });
+
   it('publishes no height when the header is not pinned, so a lone group heading falls back to the top edge', () => {
     const rect = mockLayoutHeight(44);
     render(<Table data={data} columns={columns} />);
