@@ -2,15 +2,28 @@
 
 /**
  * @file Markdown.helpers.perf.test.ts
- * @input Deterministic 200/500-section Markdown and zero-work transform helpers
- * @output Paired median fast-path evidence for unclaimed helper transforms
+ * @input Deterministic 200/500-section Markdown with text, fence, and decoration helpers
+ * @output Paired median evidence for skipped helpers and for helper-owned overhead
  * @position Helper dispatch regression; full FR23 evidence lands after all helpers
+ *
+ * The exact FR23 comparison against the omitted/empty pipeline lives in its
+ * own file, `Markdown.fr23.perf.test.ts`: it must run in a process that has
+ * not already exercised a dozen other plugin configurations, or the engine's
+ * state rather than the helpers' work dominates the ratio.
+ *
+ * A helper that actually runs also pays Core's fixed per-parse transform cost
+ * (heading marking, freezing, and validation), which no helper change can
+ * move; the running-helper cases below therefore compare against transforms
+ * that return their input unchanged so a regression points at the helper.
+ * `spec:AST-036` FR23's absolute budgets stay open until that protocol cost
+ * and the remaining helpers land.
  */
 
 import {describe, expect, it} from 'vitest';
 import {parseMarkdown} from './parser';
 import {createMarkdownPlugin} from './plugins';
 import {createMarkdownSemanticFenceTransform} from './semanticFence';
+import {createMarkdownSourceDecoration} from './sourceDecoration';
 import {createMarkdownTextTransform} from './textTransform';
 
 let benchmarkSink = 0;
@@ -98,7 +111,173 @@ const zeroWorkPlugins = [
   }),
 ];
 
+/**
+ * Five decoration helpers whose ranges start past the end of any fixture
+ * document, so none of them can claim source and Core skips every one.
+ */
+const unclaimedDecorationPlugins = Array.from({length: 5}, (_, index) =>
+  createMarkdownPlugin({
+    name: `unclaimed-decoration-${index}`,
+    apiVersion: 1,
+    transform: createMarkdownSourceDecoration({
+      name: `unclaimed-decoration-${index}`,
+      ranges: [{start: 10_000_000 + index, end: 10_000_100 + index}],
+    }),
+  }),
+);
+
+/**
+ * Five decoration helpers that claim the source and sweep the whole block
+ * list, but whose ranges sit in the blank lines between blocks and therefore
+ * record nothing.
+ */
+function gapDecorationPlugins(
+  source: string,
+  count: number,
+  rangesPerHelper: number,
+  prefix: string,
+) {
+  const gaps: {start: number; end: number}[] = [];
+  for (
+    let gap = source.indexOf('\n\n');
+    gap >= 0 && gaps.length < rangesPerHelper;
+    gap = source.indexOf('\n\n', gap + 1)
+  ) {
+    gaps.push({start: gap, end: gap + 1});
+  }
+  if (gaps.length < rangesPerHelper) {
+    throw new Error('Fixture has too few block gaps for this case');
+  }
+  return Array.from({length: count}, (_, index) =>
+    createMarkdownPlugin({
+      name: `${prefix}-${index}`,
+      apiVersion: 1,
+      transform: createMarkdownSourceDecoration({
+        name: `${prefix}-${index}`,
+        ranges: gaps,
+      }),
+    }),
+  );
+}
+
+/**
+ * Transforms that return their input unchanged. Comparing a helper against
+ * these isolates the helper's own dispatch from the fixed per-parse cost Core
+ * pays for any running transform (heading marking, freezing, validation),
+ * which `spec:AST-036` FR23's absolute budgets also cover but which no helper
+ * change can move.
+ */
+function identityPlugins(count: number, prefix: string) {
+  return Array.from({length: count}, (_, index) =>
+    createMarkdownPlugin({
+      name: `${prefix}-${index}`,
+      apiVersion: 1,
+      transform: root => root,
+    }),
+  );
+}
+
+const identityFivePlugins = identityPlugins(5, 'identity-five');
+
+/** Matches a prose identifier in every fixture section. */
+const identifierPlugin = createMarkdownPlugin({
+  name: 'representative-identifiers',
+  apiVersion: 1,
+  transform: createMarkdownTextTransform({
+    pattern: /\bAST-\d+\b/g,
+    requiredSubstrings: ['AST-'],
+    replace: match => ({type: 'text', value: match[0].toLowerCase()}),
+  }),
+});
+
+/** Annotates the ordinary text fence each fixture section carries. */
+const fencePlugin = createMarkdownPlugin({
+  name: 'representative-fences',
+  apiVersion: 1,
+  transform: createMarkdownSemanticFenceTransform({
+    languages: ['text'],
+    render: ({code}) => code,
+  }),
+});
+
+/** Decorates one known source range: the first section heading. */
+function knownRangeDecorationPlugin(source: string) {
+  const heading = source.indexOf('## Section 0');
+  return createMarkdownPlugin({
+    name: 'representative-decoration',
+    apiVersion: 1,
+    transform: createMarkdownSourceDecoration({
+      name: 'representative-decoration',
+      ranges: [{start: heading, end: heading + '## Section 0'.length}],
+    }),
+  });
+}
+
+// Each case runs the paired protocol twice (10 warmups, then 9 rounds of two
+// 20-iteration averages per side), so a 500-section case parses ~1500 times.
+// The bounds below are the measured cost plus generous headroom for a busy
+// machine; they exist so a hang fails loudly instead of stalling the suite.
+const TIMEOUT_MS: Readonly<Record<number, number>> = {
+  200: 60_000,
+  500: 180_000,
+};
+
 describe('Markdown helper performance', () => {
+  // The skip path's real contract is a work count, not a clock: an unclaimed
+  // helper's transform must never be entered, for a stable list and for a
+  // recreated equivalent one. Asserting the count directly is exact and
+  // immune to what else the machine is running; the timing cases below cover
+  // the helpers that do run.
+  it.each([200, 500])(
+    'never enters an unclaimed helper at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      let entered = 0;
+      const countingPlugins = [
+        ...Array.from({length: 4}, (_, index) =>
+          createMarkdownPlugin({
+            name: `counted-text-${index}`,
+            apiVersion: 1,
+            transform: createMarkdownTextTransform({
+              pattern: new RegExp(`NEVER_MATCH_${index}`, 'g'),
+              requiredSubstrings: [`NEVER_MATCH_${index}`],
+              replace: () => {
+                entered++;
+                return {type: 'text', value: ''};
+              },
+            }),
+          }),
+        ),
+        createMarkdownPlugin({
+          name: 'counted-fence',
+          apiVersion: 1,
+          transform: createMarkdownSemanticFenceTransform({
+            languages: ['never-fence'],
+            render: () => {
+              entered++;
+              return null;
+            },
+          }),
+        }),
+        ...Array.from({length: 5}, (_, index) =>
+          createMarkdownPlugin({
+            name: `counted-decoration-${index}`,
+            apiVersion: 1,
+            transform: createMarkdownSourceDecoration({
+              name: `counted-decoration-${index}`,
+              ranges: [{start: 10_000_000 + index, end: 10_000_100 + index}],
+            }),
+          }),
+        ),
+      ];
+
+      parseMarkdown(source, {plugins: countingPlugins});
+      parseMarkdown(source, {plugins: [...countingPlugins]});
+      expect(entered).toBe(0);
+    },
+    TIMEOUT_MS[500],
+  );
+
   it.each([200, 500])(
     'keeps five hinted no-claim helpers within a 1.15 ratio at %i sections',
     sections => {
@@ -117,5 +296,163 @@ describe('Markdown helper performance', () => {
       expect(stableRatio).toBeLessThanOrEqual(1.15);
       expect(recreatedRatio).toBeLessThanOrEqual(1.15);
     },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'keeps five unclaimed decoration helpers within a 1.15 ratio at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      const stableRatio = pairedMedianRatio(
+        () => parseMarkdown(source).length,
+        () =>
+          parseMarkdown(source, {plugins: unclaimedDecorationPlugins}).length,
+      );
+      const recreatedRatio = pairedMedianRatio(
+        () => parseMarkdown(source).length,
+        () =>
+          parseMarkdown(source, {plugins: [...unclaimedDecorationPlugins]})
+            .length,
+      );
+      console.log(
+        `  ${sections} sections, unclaimed decoration ratios: stable ${stableRatio.toFixed(3)}, recreated ${recreatedRatio.toFixed(3)}`,
+      );
+      expect(stableRatio).toBeLessThanOrEqual(1.15);
+      expect(recreatedRatio).toBeLessThanOrEqual(1.15);
+    },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'adds at most 15 percent over plain transforms for five sweeping decorations at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      const sweeping = gapDecorationPlugins(source, 5, 1, 'gap-decoration');
+      const ratio = pairedMedianRatio(
+        () => parseMarkdown(source, {plugins: identityFivePlugins}).length,
+        () => parseMarkdown(source, {plugins: sweeping}).length,
+      );
+      console.log(
+        `  ${sections} sections, sweeping decoration over identity: ${ratio.toFixed(3)}`,
+      );
+      expect(ratio).toBeLessThanOrEqual(1.15);
+    },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'stays within 15 percent when one helper carries a range per block at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      // The sweep admits and retires each range once, so a helper holding one
+      // range per block costs the blocks it walks, not blocks times ranges.
+      const oneRange = gapDecorationPlugins(source, 1, 1, 'sweep-one');
+      const manyRanges = gapDecorationPlugins(
+        source,
+        1,
+        sections,
+        'sweep-many',
+      );
+      const ratio = pairedMedianRatio(
+        () => parseMarkdown(source, {plugins: oneRange}).length,
+        () => parseMarkdown(source, {plugins: manyRanges}).length,
+      );
+      console.log(
+        `  ${sections} sections, ${sections} ranges over one range: ${ratio.toFixed(3)}`,
+      );
+      expect(ratio).toBeLessThanOrEqual(1.15);
+    },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'adds at most 15 percent to a matching prose helper when it decorates a known range at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      // The baseline's second transform also returns a replacement root, so
+      // both sides pay Core's validation of a changed tree and the ratio
+      // reports the decoration walk itself.
+      const withoutDecoration = [
+        identifierPlugin,
+        createMarkdownPlugin({
+          name: `representative-replacement-${sections}`,
+          apiVersion: 1,
+          transform: root => ({...root}),
+        }),
+      ];
+      const withDecoration = [
+        identifierPlugin,
+        knownRangeDecorationPlugin(source),
+      ];
+      const ratio = pairedMedianRatio(
+        () => parseMarkdown(source, {plugins: withoutDecoration}).length,
+        () => parseMarkdown(source, {plugins: withDecoration}).length,
+      );
+      console.log(
+        `  ${sections} sections, known-range decoration over prose helper: ${ratio.toFixed(3)}`,
+      );
+      expect(ratio).toBeLessThanOrEqual(1.15);
+    },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'keeps the representative three-helper set within 25 percent of three plain transforms at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      // The same set against three transforms that each return a replacement
+      // root. Both sides then pay Core's per-transform guards, so this ratio
+      // reports what the three helpers themselves cost — the part a helper
+      // change can actually move.
+      const baseline = Array.from({length: 3}, (_, index) =>
+        createMarkdownPlugin({
+          name: `representative-baseline-${sections}-${index}`,
+          apiVersion: 1,
+          transform: root => ({...root}),
+        }),
+      );
+      const representative = [
+        identifierPlugin,
+        fencePlugin,
+        knownRangeDecorationPlugin(source),
+      ];
+      const ratio = pairedMedianRatio(
+        () => parseMarkdown(source, {plugins: baseline}).length,
+        () => parseMarkdown(source, {plugins: representative}).length,
+      );
+      console.log(
+        `  ${sections} sections, representative set over three transforms: ${ratio.toFixed(3)}`,
+      );
+      expect(ratio).toBeLessThanOrEqual(1.25);
+    },
+    TIMEOUT_MS[500],
+  );
+
+  it.each([200, 500])(
+    'keeps a trusted helper far below an equivalent plugin-authored transform at %i sections',
+    sections => {
+      const source = benchmarkDocument(sections);
+      // Trusted Core helpers skip the guards Core applies to plugin-authored
+      // output. Comparing the decoration helper against a plugin transform
+      // that returns an equivalent replacement root measures that saving
+      // without depending on absolute machine speed.
+      const pluginAuthored = createMarkdownPlugin({
+        name: `trusted-comparison-${sections}`,
+        apiVersion: 1,
+        transform: root => ({...root, children: [...root.children]}),
+      });
+      const ratio = pairedMedianRatio(
+        () => parseMarkdown(source, {plugins: [pluginAuthored]}).length,
+        () =>
+          parseMarkdown(source, {
+            plugins: [knownRangeDecorationPlugin(source)],
+          }).length,
+      );
+      console.log(
+        `  ${sections} sections, trusted decoration over plugin-authored transform: ${ratio.toFixed(3)}`,
+      );
+      expect(ratio).toBeLessThanOrEqual(0.85);
+    },
+    TIMEOUT_MS[500],
   );
 });

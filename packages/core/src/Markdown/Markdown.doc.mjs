@@ -265,6 +265,11 @@ export const docs = {
       {
         guidance: true,
         description:
+          'Use createMarkdownSourceDecoration to attach non-visual metadata — search hits, review annotations — to the blocks a source range touches, and getMarkdownSourceDecorations to read it back in a later plugin. Decorations appear on the settled document rather than on partial streaming chunks, and never change rendering, copyable text, accessible names, ids, focus order, or navigation.',
+      },
+      {
+        guidance: true,
+        description:
           'Use inlinePlugins for prefixed identifiers, mentions, and other prose-only shorthand instead of preprocessing the markdown string.',
       },
       {
@@ -354,6 +359,40 @@ const diagrams = createMarkdownPlugin({
 <Markdown plugins={[diagrams]}>
   {'\`\`\`mermaid Checkout flow\\ngraph LR; A-->B\\n\`\`\`'}
 </Markdown>;
+`,
+    },
+    {
+      label: 'Source decoration helper',
+      code: `
+import {
+  Markdown,
+  createMarkdownPlugin,
+  createMarkdownSourceDecoration,
+  getMarkdownSourceDecorations,
+} from '@astryxdesign/core/Markdown';
+
+// Ranges are UTF-16 offsets into the same string Markdown renders. Every
+// block a range touches is annotated; rendering, copyable text, and ids
+// never change.
+const searchHits = createMarkdownPlugin({
+  name: 'search-hits',
+  apiVersion: 1,
+  transform: createMarkdownSourceDecoration({
+    name: 'search-hit',
+    ranges: [{start: 0, end: 15, data: {query: 'release'}}],
+  }),
+});
+
+const readDecorations = createMarkdownPlugin({
+  name: 'read-decorations',
+  apiVersion: 1,
+  transform: root => {
+    report(root.children.map(getMarkdownSourceDecorations));
+    return root;
+  },
+});
+
+<Markdown plugins={[searchHits, readDecorations]}>{source}</Markdown>;
 `,
     },
     {
@@ -597,6 +636,11 @@ export const docsZh = {
       {
         guidance: true,
         description:
+          'Use createMarkdownSourceDecoration to attach non-visual metadata — search hits, review annotations — to the blocks a source range touches, and getMarkdownSourceDecorations to read it back in a later plugin. Decorations appear on the settled document rather than on partial streaming chunks, and never change rendering, copyable text, accessible names, ids, focus order, or navigation.',
+      },
+      {
+        guidance: true,
+        description:
           'Use inlinePlugins for prefixed identifiers, mentions, and other prose-only shorthand instead of preprocessing the markdown string.',
       },
       {
@@ -655,6 +699,11 @@ export const docsDense = {
         guidance: true,
         description:
           "Use createMarkdownSemanticFenceTransform for declared code-fence languages that have semantic output. components.code still wins; return null to retain Markdown's accessible, copyable CodeBlock fallback.",
+      },
+      {
+        guidance: true,
+        description:
+          'Use createMarkdownSourceDecoration to attach non-visual metadata — search hits, review annotations — to the blocks a source range touches, and getMarkdownSourceDecorations to read it back in a later plugin. Decorations appear on the settled document rather than on partial streaming chunks, and never change rendering, copyable text, accessible names, ids, focus order, or navigation.',
       },
       {
         guidance: true,

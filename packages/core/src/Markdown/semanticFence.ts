@@ -12,6 +12,7 @@ import type {MarkdownAstBlockContent, MarkdownAstCode} from './ast';
 import {
   getMarkdownTransformPluginName,
   markMarkdownTransformClaim,
+  markMarkdownTransformTrusted,
   type MarkdownExtensionNode,
   type MarkdownTransform,
   type MarkdownTransformContext,
@@ -61,16 +62,6 @@ export function getMarkdownSemanticFenceProposal(
   return (node as SemanticFenceCode)[markdownSemanticFenceProposal];
 }
 
-function sameItems<T>(
-  left: ReadonlyArray<T>,
-  right: ReadonlyArray<T>,
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
-}
-
 function annotateCode(
   node: MarkdownAstCode,
   languages: ReadonlySet<string>,
@@ -99,41 +90,51 @@ function transformBlocks(
   languages: ReadonlySet<string>,
   proposal: MarkdownSemanticFenceProposal,
 ): ReadonlyArray<MarkdownAstBlockContent<MarkdownExtensionNode>> {
-  const next = blocks.map(block => {
-    switch (block.type) {
-      case 'code':
-        return annotateCode(block, languages, proposal);
-      case 'blockquote': {
-        const children = transformBlocks(block.children, languages, proposal);
-        return children === block.children ? block : {...block, children};
+  // Lazy copy: an unchanged block list is returned as-is, so a document with
+  // no eligible fence costs one walk and no allocation.
+  let next: MarkdownAstBlockContent<MarkdownExtensionNode>[] | undefined;
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index];
+    const replacement = ((): MarkdownAstBlockContent<MarkdownExtensionNode> => {
+      switch (block.type) {
+        case 'code':
+          return annotateCode(block, languages, proposal);
+        case 'blockquote': {
+          const children = transformBlocks(block.children, languages, proposal);
+          return children === block.children ? block : {...block, children};
+        }
+        case 'list': {
+          let changed = false;
+          const children = block.children.map(item => {
+            const itemChildren = transformBlocks(
+              item.children,
+              languages,
+              proposal,
+            );
+            if (itemChildren === item.children) {
+              return item;
+            }
+            changed = true;
+            return {...item, children: itemChildren};
+          });
+          return changed ? {...block, children} : block;
+        }
+        case 'heading':
+        case 'paragraph':
+        case 'math':
+        case 'table':
+        case 'thematicBreak':
+        case 'image':
+        case 'extension':
+          return block;
       }
-      case 'list': {
-        let changed = false;
-        const children = block.children.map(item => {
-          const itemChildren = transformBlocks(
-            item.children,
-            languages,
-            proposal,
-          );
-          if (itemChildren === item.children) {
-            return item;
-          }
-          changed = true;
-          return {...item, children: itemChildren};
-        });
-        return changed ? {...block, children} : block;
-      }
-      case 'heading':
-      case 'paragraph':
-      case 'math':
-      case 'table':
-      case 'thematicBreak':
-      case 'image':
-      case 'extension':
-        return block;
+    })();
+    if (next === undefined && replacement !== block) {
+      next = blocks.slice(0, index);
     }
-  });
-  return sameItems(blocks, next) ? blocks : next;
+    next?.push(replacement);
+  }
+  return next ?? blocks;
 }
 
 export function createMarkdownSemanticFenceTransform<
@@ -175,11 +176,17 @@ export function createMarkdownSemanticFenceTransform<
     return children === root.children ? root : {...root, children};
   };
 
-  return markMarkdownTransformClaim(transform, source =>
-    declaredLanguages.some(
-      language =>
-        source.includes(`\`\`\`${language}`) ||
-        source.includes(`~~~${language}`),
+  // The helper only attaches its own render proposal to code nodes Core
+  // parsed; the caller's renderer runs later, at render time, where its
+  // output is already sandboxed. Nothing caller-supplied enters the tree
+  // here, so Core may skip plugin-output validation for this transform.
+  return markMarkdownTransformTrusted(
+    markMarkdownTransformClaim(transform, source =>
+      declaredLanguages.some(
+        language =>
+          source.includes(`\`\`\`${language}`) ||
+          source.includes(`~~~${language}`),
+      ),
     ),
   );
 }
