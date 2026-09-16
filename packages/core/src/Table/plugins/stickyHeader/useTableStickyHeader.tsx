@@ -4,7 +4,7 @@
 
 /**
  * @file useTableStickyHeader.tsx
- * @input React, StyleX, theme tokens, Table types
+ * @input React, StyleX, theme tokens, Table types, browser computed styles
  * @output Exports useTableStickyHeader hook and UseTableStickyHeaderConfig type
  * @position Sticky-header plugin; consumed by Table via plugins prop
  *
@@ -141,7 +141,7 @@ export function useTableStickyHeader<T extends Record<string, unknown>>(
       // block extent is its width; publishing the physical height would clip
       // the pinned heading and the collapse control.
       const blockIsHorizontal = /^(vertical|sideways)/.test(
-        getComputedStyle(head).getPropertyValue('writing-mode'),
+        getComputedStyle(head).writingMode,
       );
       el.style.setProperty(
         HEADER_HEIGHT_VAR,
