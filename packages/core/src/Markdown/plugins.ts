@@ -564,7 +564,8 @@ interface SourceHeadingMarker {
 
 function markSourceHeadings(
   root: MarkdownAstRoot<MarkdownExtensionNode>,
-): void {
+): Set<SourceHeadingMarker> {
+  const markers = new Set<SourceHeadingMarker>();
   const visit = (node: MarkdownAstNodeBase & {readonly type: string}): void => {
     if (node.type === 'heading' && !(sourceHeadingMarker in node)) {
       Object.defineProperty(node, sourceHeadingMarker, {
@@ -576,6 +577,15 @@ function markSourceHeadings(
         writable: false,
       });
     }
+    if (node.type === 'heading') {
+      markers.add(
+        (
+          node as unknown as {
+            readonly [sourceHeadingMarker]: SourceHeadingMarker;
+          }
+        )[sourceHeadingMarker],
+      );
+    }
     if ('children' in node && Array.isArray(node.children)) {
       for (const child of node.children) {
         if (child != null && typeof child === 'object') {
@@ -585,6 +595,7 @@ function markSourceHeadings(
     }
   };
   visit(root);
+  return markers;
 }
 
 const PHRASING_TYPES = new Set([
@@ -633,6 +644,7 @@ function validateAst(
   pluginNames: ReadonlySet<string>,
   rendererKeys: ReadonlySet<string>,
   sourcePositions: Map<string, SourceInvariant[]>,
+  sourceHeadingMarkers: ReadonlySet<SourceHeadingMarker>,
   activePluginName: string,
   existingExtensions: Map<string, ExistingExtension>,
   display: 'inline' | 'block',
@@ -734,7 +746,9 @@ function validateAst(
         )[sourceHeadingMarker];
         if (
           marker != null &&
-          (marker.depth !== node.depth || seenHeadingMarkers.has(marker))
+          (!sourceHeadingMarkers.has(marker) ||
+            marker.depth !== node.depth ||
+            seenHeadingMarkers.has(marker))
         ) {
           return false;
         }
@@ -863,6 +877,7 @@ function validateAst(
   return (
     visit(candidate, null, false) &&
     candidate.type === 'root' &&
+    seenHeadingMarkers.size === sourceHeadingMarkers.size &&
     Array.from(existingExtensions.values()).every(
       extension =>
         extension.plugin === activePluginName || extension.count === 0,
@@ -920,7 +935,7 @@ export function applyMarkdownTransforms<Node extends MarkdownExtensionNode>(
   }
   const pluginNames = new Set(plugins.entries.map(entry => entry.name));
   const rendererKeys = new Set(plugins.renderers.keys());
-  markSourceHeadings(root);
+  const sourceHeadingMarkers = markSourceHeadings(root);
   let document = freezeAst(root);
   for (const prepared of plugins.transforms) {
     try {
@@ -954,6 +969,7 @@ export function applyMarkdownTransforms<Node extends MarkdownExtensionNode>(
           pluginNames,
           rendererKeys,
           positions,
+          sourceHeadingMarkers,
           prepared.pluginName,
           existingExtensions,
           display,

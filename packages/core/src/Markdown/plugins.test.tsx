@@ -379,7 +379,31 @@ describe('Markdown plugin protocol', () => {
       },
     });
 
-    for (const plugin of [mutating, asyncPlugin, headingChange]) {
+    const headingRebuild = createMarkdownPlugin({
+      name: 'heading-rebuild',
+      apiVersion: 1,
+      transform(root) {
+        return {
+          ...root,
+          children: root.children.map(block =>
+            block.type === 'heading'
+              ? {
+                  type: 'heading' as const,
+                  depth: 5 as const,
+                  children: block.children,
+                }
+              : block,
+          ),
+        };
+      },
+    });
+
+    for (const plugin of [
+      mutating,
+      asyncPlugin,
+      headingChange,
+      headingRebuild,
+    ]) {
       expect(parseMarkdown('# Safe', {plugins: [plugin]})).toEqual([
         {
           type: 'heading',
