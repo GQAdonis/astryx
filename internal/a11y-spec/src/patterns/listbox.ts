@@ -171,5 +171,177 @@ export const LISTBOX_PATTERN = definePattern<ListboxStateFacts>({
       run: async () => undefined,
     },
   ],
-  exemptions: {},
+  exemptions: {
+    '1.1.1-non-text-content': {
+      owner: 'Caller content and Icon/Indicator components',
+      verifiedBy: 'Content review and the existing component-scoped axe audit',
+      reason:
+        'A semantic part name does not establish the meaning of every image or decorative asset in caller-rendered content.',
+    },
+    '1.3.1-info-and-relationships': {
+      owner: 'Component markup and axe ARIA content-model checks',
+      verifiedBy: 'Existing pr-a11y checks and component composition tests',
+      reason:
+        'This contract checks the declared listbox ownership; allowed child-role structure and other composed relationships retain their existing checks.',
+      coversRemainderOnly: true,
+    },
+    '1.3.2-meaningful-sequence': {
+      owner: 'Selector/MultiSelector ordering and caller content',
+      verifiedBy:
+        'Component sorting/filtering suites and browser reading-order review',
+      reason:
+        'This semantic slice does not choose a sorting or visual-order policy.',
+    },
+    '1.3.5-identify-input-purpose': {
+      owner: 'Form callsite and combobox input',
+      verifiedBy: 'Form-purpose and autocomplete review',
+      reason:
+        'A popup option container does not determine which personal-information purpose the surrounding field collects.',
+    },
+    '1.4.1-use-of-color': {
+      owner: 'Component and theme selection indicators',
+      verifiedBy:
+        'Indicator tests and visual review of selected/unselected states',
+      reason:
+        'Programmatic selection exposure does not prove a non-color visual cue.',
+    },
+    '1.4.3-contrast-minimum': {
+      owner: 'Component themes and caller content',
+      verifiedBy: 'Existing contrast audit and rendered theme review',
+      reason:
+        'Contrast needs rendered pixels and is not established by DOM or accessibility-tree semantics.',
+    },
+    '1.4.11-non-text-contrast': {
+      owner: 'Component themes and indicator/focus styling',
+      verifiedBy: 'Existing contrast audit and rendered selected/focus states',
+      reason:
+        'The semantic contract does not measure painted controls or graphics.',
+    },
+    '2.1.1-keyboard': {
+      owner: 'Selector/MultiSelector interaction and combobox contracts',
+      verifiedBy:
+        'Existing component keyboard suites; separate real-browser interaction review',
+      reason:
+        'This first slice does not adopt a shared focus/selection model. Its results are not keyboard-conformance evidence.',
+    },
+    '2.1.2-no-keyboard-trap': {
+      owner: 'Combobox, Popover, and BottomSheet lifecycle',
+      verifiedBy:
+        'Popup keyboard/dismissal suites and native-browser Tab checks',
+      reason:
+        'Entry and exit belong to the active host presentation rather than the static option semantics bound here.',
+    },
+    '2.4.2-page-titled': {
+      owner: 'Page shell',
+      verifiedBy: 'Page-level accessibility review',
+      reason: 'Neither a listbox nor an option owns the document title.',
+    },
+    '2.4.3-focus-order': {
+      owner: 'Combobox and popup focus owners',
+      verifiedBy: 'Existing focus suites and real-browser presentation review',
+      reason:
+        'Selection state and focus are distinct; this contract does not choose or attest a focus movement model.',
+    },
+    '2.4.4-link-purpose': {
+      owner: 'Link and caller content',
+      verifiedBy: 'Navigation-destination contract and content review',
+      reason: 'An option selects a value; it is not a navigation link.',
+    },
+    '2.4.6-headings-and-labels': {
+      owner: 'Caller labels and component content review',
+      verifiedBy: 'Review of field, group, and option wording',
+      reason:
+        'A nonempty computed name does not prove that its wording describes the intended topic.',
+    },
+    '2.4.7-focus-visible': {
+      owner: 'Component themes and interaction-modality system',
+      verifiedBy: 'Rendered keyboard-focus review and the existing visual lane',
+      reason: 'No pixel or focus-ring claim is made by these semantic checks.',
+    },
+    '2.4.11-focus-not-obscured': {
+      owner: 'Popup host and application layout',
+      verifiedBy: 'Constrained-viewport real-browser focus review',
+      reason:
+        'Geometry and occlusion depend on the presentation and surrounding layout.',
+    },
+    '2.5.2-pointer-cancellation': {
+      owner: 'Selector/MultiSelector option interaction',
+      verifiedBy: 'Separate real-browser press/abort/release regression checks',
+      reason:
+        'The binding observes state without adopting or claiming a pointer-selection transition contract.',
+    },
+    '2.5.3-label-in-name': {
+      owner: 'Component rendering and caller option content',
+      verifiedBy: 'Rendered-label versus computed-name review',
+      reason:
+        'Identity presence is narrower than matching painted label text; custom option content remains separately reviewed.',
+    },
+    '2.5.8-target-size': {
+      owner: 'Component themes and composition',
+      verifiedBy: 'Browser target geometry and WCAG exception review',
+      reason:
+        'Target dimensions and spacing cannot be proved from semantic state.',
+    },
+    '3.1.1-language-of-page': {
+      owner: 'Page shell and localization provider',
+      verifiedBy: 'Document-language and locale integration checks',
+      reason: 'The popup does not own the document language.',
+    },
+    '3.2.2-on-input': {
+      owner: 'Component interaction and application response to selection',
+      verifiedBy: 'Component interaction suites and end-to-end task review',
+      reason:
+        'This contract does not activate options or decide what the application does with a selected value.',
+    },
+    '3.2.4-consistent-identification': {
+      owner: 'Design system and application content',
+      verifiedBy: 'Cross-control content/design review',
+      reason:
+        'One popup fixture cannot establish consistent identification across an application.',
+    },
+    '3.3.1-error-identification': {
+      owner: 'Field validation and status-message owners',
+      verifiedBy: 'Existing input/status suites and textual-error review',
+      reason:
+        'Validation feedback belongs to the surrounding field, not each option.',
+    },
+    '3.3.2-labels-or-instructions': {
+      owner: 'Field and caller instructions',
+      verifiedBy: 'Field-label and form-content review',
+      reason:
+        'A named popup does not establish every instruction needed by its enclosing task.',
+    },
+    '4.1.3-status-messages': {
+      owner: 'Status-message contract and component live-region owners',
+      verifiedBy: 'Status-message bindings; AST-009 for speech/timing claims',
+      reason:
+        'Loading, result-count, empty, and selection announcements are not static listbox identity.',
+    },
+    'apg-interaction': {
+      owner:
+        'Current component interaction authority and future bounded migration',
+      verifiedBy: 'Current-record review plus component keyboard suites',
+      reason:
+        'WAI-ARIA semantics apply here, but this slice does not adopt APG selection-follows-focus, unavailable-option navigation, Home/End, or typeahead policy.',
+    },
+    'forced-colors': {
+      owner: 'Component themes and indicators',
+      verifiedBy: 'Real-browser forced-color paint review',
+      reason:
+        'State exposure does not prove that a selection mark or focus indicator remains visible.',
+    },
+    'reduced-motion': {
+      owner: 'Popover/BottomSheet and component themes',
+      verifiedBy: 'Existing reduced-motion tests and browser review',
+      reason:
+        'The semantic part contract owns no opening or closing animation.',
+    },
+    'at-facing-strings': {
+      owner: 'Component localization and caller labels',
+      verifiedBy:
+        'Catalog checks and localized component tests; AST-009 for speech claims',
+      reason:
+        'The binding uses deterministic labels without claiming translation completeness or spoken output.',
+    },
+  },
 });

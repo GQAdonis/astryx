@@ -1,10 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file MultiSelector.listbox.a11y.test.tsx
- * @input Uses MultiSelector, its part/state inventory, and the shared Listbox contract
- * @output DOM evidence for real multi-select listbox, group, and option parts
- * @position Component-facing binding; API, form, composition, and styling stay local.
+ * @file Selector.listbox.a11y.test.tsx
+ * @input Uses Selector, its explicit part/state inventory, and the Listbox contract
+ * @output DOM evidence for real single-select listbox, group, and option parts
+ * @position Component-facing binding; keyboard, callbacks, forms, and styles stay local.
  */
 
 import {cleanup, render, screen, within} from '@testing-library/react';
@@ -14,37 +14,33 @@ import {
   expectAccessibilitySpec,
   LISTBOX_PATTERN,
 } from '@astryxdesign/a11y-spec';
-import {MultiSelector} from '../MultiSelector';
-import {
-  LISTBOX_SCENARIOS,
-  listboxParts,
-} from '../../Selector/__tests__/Listbox.a11y.states';
-import {installListboxDialogStubs} from '../../Selector/__tests__/Listbox.a11y.dom';
+import {Selector} from '../Selector';
+import {LISTBOX_SCENARIOS, listboxParts} from './Listbox.a11y.states';
+import {installListboxDialogStubs} from './Listbox.a11y.dom';
 
 installListboxDialogStubs();
 
 const scenarios = LISTBOX_SCENARIOS.filter(
-  scenario => scenario.component === 'MultiSelector',
+  scenario => scenario.component === 'Selector',
 );
 
-describe('MultiSelector Listbox semantic binding', () => {
+describe('Selector Listbox semantic binding', () => {
   it.each(scenarios)('$id', async scenario => {
     for (const part of listboxParts(scenario)) {
       await expectAccessibilitySpec({
         spec: LISTBOX_PATTERN,
-        binding: `MultiSelector.${part.role}`,
+        binding: `Selector.${part.role}`,
         state: part.state,
         facts: part.facts,
         render: async () => {
           render(
             <div dir={scenario.direction ?? 'ltr'}>
-              <MultiSelector
+              <Selector
                 label="Fruit"
                 options={scenario.options}
-                value={scenario.values}
+                value={scenario.values[0]}
                 onChange={() => {}}
                 hasSearch={scenario.hasSearch}
-                hasSelectAll={scenario.hasSelectAll}
                 presentation={scenario.presentation}
                 isLoading={scenario.isLoading}
                 isLabelHidden={scenario.hiddenLabel}
@@ -80,20 +76,17 @@ describe('MultiSelector Listbox semantic binding', () => {
     }
   });
 
-  it('keeps the bounded state matrix and select-all states explicit', () => {
+  it('keeps the bounded state matrix explicit', () => {
     expect(scenarios.map(scenario => scenario.id)).toEqual([
-      'multiple-unset',
-      'multiple-selected',
-      'multiple-disabled-selected',
-      'multiple-grouped',
-      'multiple-filtered',
-      'multiple-custom-rtl',
-      'multiple-sheet',
-      'multiple-sheet-search',
-      'multiple-loading',
-      'multiple-select-all-none',
-      'multiple-select-all-partial',
-      'multiple-select-all-all',
+      'single-unset',
+      'single-selected',
+      'single-disabled-selected',
+      'single-grouped',
+      'single-filtered',
+      'single-custom-rtl',
+      'single-sheet',
+      'single-sheet-search',
+      'single-loading',
     ]);
   });
 });
