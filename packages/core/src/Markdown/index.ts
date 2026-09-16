@@ -4,7 +4,7 @@
 
 /**
  * @file index.ts
- * @output Exports Markdown component, parser functions, and types
+ * @output Exports Markdown component, parser functions, transform helpers, and types
  * @position Component entry point; re-exported by /packages/core/src/index.ts
  */
 
@@ -13,6 +13,12 @@ export type {
   MarkdownTextTransformContext,
   MarkdownTextTransformOptions,
 } from './textTransform';
+export {createMarkdownSemanticFenceTransform} from './semanticFence';
+export type {
+  MarkdownSemanticFenceRenderProps,
+  MarkdownSemanticFenceRenderResult,
+  MarkdownSemanticFenceTransformOptions,
+} from './semanticFence';
 export {createMarkdownPlugin, isMarkdownExtensionNode} from './plugins';
 export type {
   MarkdownPluginData,

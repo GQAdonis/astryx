@@ -57,7 +57,7 @@ import {
   uniqueSlug,
 } from './parser';
 import type {IncrementalState, MathParseOptions, ParseOptions} from './parser';
-import {markdownAstText} from './ast';
+import {getMarkdownAstLegacyCodeLanguage, markdownAstText} from './ast';
 import type {
   MarkdownAstBlockContent,
   MarkdownAstPhrasingContent,
@@ -70,6 +70,7 @@ import {
   prepareMarkdownPlugins,
   reportMarkdownPluginFailure,
 } from './plugins';
+import {getMarkdownSemanticFenceProposal} from './semanticFence';
 import type {
   MarkdownExtensionNode,
   MarkdownPluginEntry,
@@ -1196,6 +1197,39 @@ function computeTableColumnMinWidths(node: RenderTable): number[] {
   });
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    'then' in value &&
+    typeof value.then === 'function'
+  );
+}
+
+function reportAsyncSemanticFenceResult(
+  pluginName: string,
+  result: PromiseLike<unknown>,
+): void {
+  void Promise.resolve(result).then(
+    () => {
+      reportMarkdownPluginFailure(
+        pluginName,
+        'render',
+        new TypeError(
+          'Async Markdown semantic fence renderers are not supported',
+        ),
+      );
+    },
+    () => {
+      reportMarkdownPluginFailure(
+        pluginName,
+        'render',
+        new TypeError('Async Markdown semantic fence renderer rejected'),
+      );
+    },
+  );
+}
+
 function renderBlock(
   node: RenderBlockNode,
   index: number,
@@ -1330,17 +1364,14 @@ function renderBlock(
     case 'code': {
       // Track codeblock content in cursor for accurate character counting
       cursor.offset += node.value.length;
+      const language = getMarkdownAstLegacyCodeLanguage(node) ?? 'plaintext';
       const CodeBlockComp = components?.code;
       if (CodeBlockComp) {
         return (
-          <CodeBlockComp
-            key={index}
-            code={node.value}
-            language={node.lang ?? 'plaintext'}
-          />
+          <CodeBlockComp key={index} code={node.value} language={language} />
         );
       }
-      return (
+      const fallback = (
         <div
           key={index}
           {...mergeProps(
@@ -1354,7 +1385,7 @@ function renderBlock(
           )}>
           <CodeBlock
             code={node.value}
-            language={node.lang ?? 'plaintext'}
+            language={language}
             isCollapsible
             xstyle={[
               contentWidthValue != null
@@ -1365,6 +1396,37 @@ function renderBlock(
           />
         </div>
       );
+      const proposal = getMarkdownSemanticFenceProposal(node);
+      if (proposal == null || node.lang == null) {
+        return fallback;
+      }
+      try {
+        const rendered = proposal.render({
+          code: node.value,
+          language: node.lang,
+          ...(node.meta == null ? {} : {meta: node.meta}),
+        });
+        if (isPromiseLike(rendered)) {
+          reportAsyncSemanticFenceResult(proposal.pluginName, rendered);
+          return fallback;
+        }
+        if (rendered == null || typeof rendered === 'boolean') {
+          return fallback;
+        }
+        return (
+          <MarkdownPluginBoundary
+            key={index}
+            pluginName={proposal.pluginName}
+            resetKey={node}
+            resetRenderer={proposal.render}
+            fallback={fallback}>
+            <Suspense fallback={fallback}>{rendered}</Suspense>
+          </MarkdownPluginBoundary>
+        );
+      } catch (error) {
+        reportMarkdownPluginFailure(proposal.pluginName, 'render', error);
+        return fallback;
+      }
     }
     case 'math': {
       cursor.offset += node.value.length;

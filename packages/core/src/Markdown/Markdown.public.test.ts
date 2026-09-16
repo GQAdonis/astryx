@@ -11,6 +11,7 @@ import {describe, expectTypeOf, it} from 'vitest';
 import {
   createIncrementalState,
   createMarkdownPlugin,
+  createMarkdownSemanticFenceTransform,
   isMarkdownExtensionNode,
   parseInline,
   parseMarkdown,
@@ -23,7 +24,10 @@ import type {
   InlineNode,
   InlineNodeWithMath,
   MarkdownExtensionNode,
+  MarkdownPluginEntry,
+  MarkdownSemanticFenceTransformOptions,
   MarkdownSyntaxPluginDefinition,
+  MarkdownTransform,
   ParseOptions,
 } from './index';
 
@@ -203,5 +207,28 @@ describe('Markdown public parser types', () => {
       });
     }
     expectTypeOf(compileOnlyPluginGuards).toBeFunction();
+  });
+
+  it('exports a language-narrowed semantic fence transform helper', () => {
+    const options = {
+      languages: ['mermaid', 'dot'] as const,
+      render: ({language, code, meta}) => {
+        expectTypeOf(language).toEqualTypeOf<'mermaid' | 'dot'>();
+        expectTypeOf(code).toBeString();
+        expectTypeOf(meta).toEqualTypeOf<string | undefined>();
+        return null;
+      },
+    } satisfies MarkdownSemanticFenceTransformOptions<
+      readonly ['mermaid', 'dot']
+    >;
+    const transform = createMarkdownSemanticFenceTransform(options);
+    const plugin = createMarkdownPlugin({
+      name: 'public-semantic-fences',
+      apiVersion: 1,
+      transform,
+    });
+
+    expectTypeOf(transform).toEqualTypeOf<MarkdownTransform<never>>();
+    expectTypeOf(plugin).toEqualTypeOf<MarkdownPluginEntry<never>>();
   });
 });

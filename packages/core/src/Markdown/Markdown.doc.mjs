@@ -260,6 +260,11 @@ export const docs = {
       {
         guidance: true,
         description:
+          "Use createMarkdownSemanticFenceTransform for declared code-fence languages that have semantic output. components.code still wins; return null to retain Markdown's accessible, copyable CodeBlock fallback.",
+      },
+      {
+        guidance: true,
+        description:
           'Use inlinePlugins for prefixed identifiers, mentions, and other prose-only shorthand instead of preprocessing the markdown string.',
       },
       {
@@ -326,6 +331,29 @@ const finalLabels = createMarkdownPlugin({
 });
 
 <Markdown plugins={[finalLabels]}># Draft</Markdown>;
+`,
+    },
+    {
+      label: 'Semantic fence helper',
+      code: `
+import {
+  Markdown,
+  createMarkdownPlugin,
+  createMarkdownSemanticFenceTransform,
+} from '@astryxdesign/core/Markdown';
+
+const diagrams = createMarkdownPlugin({
+  name: 'diagrams',
+  apiVersion: 1,
+  transform: createMarkdownSemanticFenceTransform({
+    languages: ['mermaid'],
+    render: ({code, meta}) => <Diagram source={code} label={meta} />,
+  }),
+});
+
+<Markdown plugins={[diagrams]}>
+  {'\`\`\`mermaid Checkout flow\\ngraph LR; A-->B\\n\`\`\`'}
+</Markdown>;
 `,
     },
     {
@@ -564,6 +592,11 @@ export const docsZh = {
       {
         guidance: true,
         description:
+          "Use createMarkdownSemanticFenceTransform for declared code-fence languages that have semantic output. components.code still wins; return null to retain Markdown's accessible, copyable CodeBlock fallback.",
+      },
+      {
+        guidance: true,
+        description:
           'Use inlinePlugins for prefixed identifiers, mentions, and other prose-only shorthand instead of preprocessing the markdown string.',
       },
       {
@@ -617,6 +650,11 @@ export const docsDense = {
         guidance: true,
         description:
           'Use createMarkdownTextTransform for prose matching; it preserves code, links, images, citations, math, and accepted extension syntax as protected contexts. Provide requiredSubstrings only when they conservatively cover every possible match.',
+      },
+      {
+        guidance: true,
+        description:
+          "Use createMarkdownSemanticFenceTransform for declared code-fence languages that have semantic output. components.code still wins; return null to retain Markdown's accessible, copyable CodeBlock fallback.",
       },
       {
         guidance: true,
