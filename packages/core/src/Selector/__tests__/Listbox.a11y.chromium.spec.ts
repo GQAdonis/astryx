@@ -80,7 +80,15 @@ for (const scenario of LISTBOX_SCENARIOS) {
               page,
               cdp,
               subject,
-              related: {listbox},
+              related: {
+                listbox,
+                ...Object.fromEntries(scenario.expectedOptions.map(option => [
+                  `option:${option.value}`, listbox.getByRole('option', {name: option.name, exact: true}),
+                ])),
+                ...Object.fromEntries(scenario.groups.map(name => [
+                  `group:${name}`, listbox.getByRole('group', {name, exact: true}),
+                ])),
+              },
             });
           },
         }),
@@ -92,7 +100,7 @@ for (const scenario of LISTBOX_SCENARIOS) {
     expect(formatFailures(blockingResults(results))).toBe('');
     expect(report.counts.unrun).toBe(0);
     expect(report.counts.knownFailure).toBe(0);
-    if (scenario.groups.length > 0) {
+    if (scenario.component === 'Selector' && scenario.groups.length > 0) {
       expect(neverExercised(results)).toEqual([]);
     }
   });

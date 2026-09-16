@@ -20,6 +20,7 @@ export interface ListboxScenario {
     name: string;
     disabled: boolean;
     selected?: boolean;
+    group?: string;
   }>;
   readonly groups: ReadonlyArray<string>;
   readonly hasSearch?: boolean;
@@ -59,9 +60,9 @@ const groupedOptions: SelectorOptionType[] = [
   },
 ];
 const groupedExpected = [
-  {value: 'orange', name: 'Orange', disabled: false},
-  {value: 'lemon', name: 'Lemon', disabled: false},
-  {value: 'blueberry', name: 'Blueberry', disabled: true},
+  {value: 'orange', name: 'Orange', disabled: false, group: 'Citrus'},
+  {value: 'lemon', name: 'Lemon', disabled: false, group: 'Citrus'},
+  {value: 'blueberry', name: 'Blueberry', disabled: true, group: 'Berries'},
 ];
 
 function scenarios(component: ListboxScenario['component']): ListboxScenario[] {
@@ -93,7 +94,7 @@ function scenarios(component: ListboxScenario['component']): ListboxScenario[] {
       id: `${prefix}-filtered`,
       options: groupedOptions,
       values: ['orange'],
-      expectedOptions: [{value: 'lemon', name: 'Lemon', disabled: false}],
+      expectedOptions: [{value: 'lemon', name: 'Lemon', disabled: false, group: 'Citrus'}],
       groups: ['Citrus'],
       hasSearch: true,
       query: 'lem',
@@ -171,7 +172,7 @@ export function listboxParts(
     {
       role: 'listbox',
       state: `${scenario.id}:listbox`,
-      facts: {part: 'listbox', multiple},
+      facts: {part: 'listbox', multiple, optionRelations: scenario.expectedOptions.map(option => `option:${option.value}`)},
     },
     ...scenario.groups.map(name => ({
       role: 'group' as const,
@@ -188,6 +189,7 @@ export function listboxParts(
         multiple,
         selected: option.selected ?? scenario.values.includes(option.value),
         disabled: option.disabled,
+        ownerGroup: option.group == null ? undefined : `group:${option.group}`,
       },
     })),
   ];

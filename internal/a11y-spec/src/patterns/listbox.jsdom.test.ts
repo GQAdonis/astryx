@@ -21,6 +21,7 @@ async function checkMultiple(attribute: string, multiple = true) {
     binding: 'fixture',
     state: 'multiple',
     facts: {part: 'listbox', multiple},
+    only: ['listbox.state.multiselectable'],
     mount: async () => {
       document.body.innerHTML = `<div role="listbox" aria-label="Fruit" ${attribute}><div role="option" aria-selected="false">Apple</div></div>`;
       return createJsdomHarness({subject: document.body.firstElementChild!});
@@ -154,6 +155,31 @@ async function checkOwnership(owned: boolean) {
 }
 
 describe('listbox.relationship.owned — WCAG 2.2 1.3.1', () => {
+  it.each([
+    ['dom', 'owns'],
+    ['owns', 'dom'],
+    ['owns', 'owns'],
+  ] as const)('accepts an indirect %s → %s group relationship', async (outer, inner) => {
+    const result = await checkAccessibilitySpec({
+      spec: LISTBOX_PATTERN,
+      binding: 'fixture',
+      state: 'indirect-owned-option',
+      facts: {part: 'option', multiple: false, ownerGroup: 'group'},
+      only: ['listbox.relationship.owned'],
+      mount: async () => {
+        const option = '<div id="option" role="option" aria-selected="false">Orange</div>';
+        const group = `<div id="group" role="group" aria-label="Citrus" ${inner === 'owns' ? 'aria-owns="option"' : ''}>${inner === 'dom' ? option : ''}</div>`;
+        document.body.innerHTML = `<div id="list" role="listbox" aria-label="Fruit" ${outer === 'owns' ? 'aria-owns="group"' : ''}>${outer === 'dom' ? group : ''}</div>${outer === 'owns' ? group : ''}${inner === 'owns' ? option : ''}`;
+        return createJsdomHarness({
+          subject: document.getElementById('option')!,
+          related: {listbox: document.getElementById('list')!, group: document.getElementById('group')!},
+        });
+      },
+      unmount: () => document.body.replaceChildren(),
+    });
+    expect(result.results[0]?.status).toBe('pass');
+  });
+
   it('accepts an option contained by its listbox', async () => {
     const result = await checkOwnership(true);
     expect(result.results[0]?.status).toBe('pass');

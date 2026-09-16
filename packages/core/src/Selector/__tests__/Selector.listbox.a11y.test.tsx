@@ -70,7 +70,19 @@ describe('Selector Listbox semantic binding', () => {
                 part.role,
                 {name: part.name, hidden: true},
               ),
-        related: () => ({listbox: screen.getByRole('listbox', {hidden: true})}),
+        related: () => {
+          const listbox = screen.getByRole('listbox', {hidden: true});
+          expect(within(listbox).getAllByRole('option', {hidden: true})).toHaveLength(scenario.expectedOptions.length);
+          return {
+            listbox,
+            ...Object.fromEntries(scenario.expectedOptions.map(option => [
+              `option:${option.value}`, within(listbox).getByRole('option', {name: option.name, hidden: true}),
+            ])),
+            ...Object.fromEntries(scenario.groups.map(name => [
+              `group:${name}`, within(listbox).getByRole('group', {name, hidden: true}),
+            ])),
+          };
+        },
         cleanup,
       });
     }
