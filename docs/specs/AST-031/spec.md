@@ -61,6 +61,10 @@ server fallback and ordered environmental rules:
 `adaptations.default` is the server-rendered value, hydration value, and no-match
 fallback. The last matching rule wins.
 
+`adaptations` is the preferred API for new code. Selector's legacy `presentation`
+and DateInput/DateTimeInput's legacy `nativePicker` props are deprecated but remain
+supported compatibility syntax during migration.
+
 ## Public-API admission
 
 The caller already owns whether Selector uses a modal or anchored interaction and
@@ -166,8 +170,9 @@ mapping without exposing raw queries or a general conditional-props bag.
   the shared grammar intentionally has no inclusive upper edge; products that need
   a different global cutoff adjust their Theme's `md`—which also moves AppShell
   when it uses its default `md` mobile-nav breakpoint—while a constant sheet uses
-  `presentation="bottom-sheet"`. This is a reviewed breaking behavior change and
-  requires a Changeset.
+  `adaptations={{default: 'bottom-sheet', rules: []}}`. The deprecated
+  `presentation="bottom-sheet"` remains supported. The boundary change is a reviewed
+  breaking behavior change and requires a Changeset.
 - **FR8 — Date and date-time adaptations select an exact surface.** Public
   `DateInputAdaptationValue` and `DateTimeInputAdaptationValue` are each
   `native | popover | bottom-sheet`, exported from `@astryxdesign/core` and their
@@ -175,7 +180,8 @@ mapping without exposing raw queries or a general conditional-props bag.
   `native` renders browser/OS date/time controls, `popover` renders Astryx's pointer
   field and anchored surface, and `bottom-sheet` renders Astryx's touch field and
   modal sheet. These values have the same whole-tree meaning regardless of pointer
-  precision. Existing shorthand maps as follows when `adaptations` is absent:
+  precision. Deprecated `nativePicker` shorthand remains supported and maps as
+  follows when `adaptations` is absent:
 
   | Component                 | Shorthand | Equivalent requested surface policy                           |
   | ------------------------- | --------- | ------------------------------------------------------------- |
@@ -217,6 +223,17 @@ mapping without exposing raw queries or a general conditional-props bag.
   condition names, width points, and authored-order precedence. They do not share
   values or execution: theme rules remain CSS-first per-leaf writes, while a
   component prop resolves one whole policy value in JavaScript.
+- **FR13 — Deprecate direct props without removing support.** Selector's
+  `presentation` and DateInput/DateTimeInput's `nativePicker` are deprecated in
+  favor of `adaptations`, the preferred API for new code. They MUST remain
+  supported during migration with the compatibility mappings and exceptions in
+  FR7–FR9. Public prop JSDoc/type declarations MUST mark these legacy props with
+  `@deprecated` and point to `adaptations`. Consumer documentation MUST identify
+  them as deprecated and direct new usages to `adaptations`, including constant
+  policies with an empty `rules` array.
+  Deprecation itself MUST NOT change defaults, fallback behavior, rule precedence,
+  or FR6's exclusivity contract. It sets no removal deadline; removal requires a
+  separate compatibility decision and migration plan.
 
 - **IR1 — One internal compiler owns condition semantics.** Theme CSS generation
   and component adaptation resolution call a package-internal
@@ -290,6 +307,15 @@ case; changing the Theme's `md` moves the shared global point and is the only
 threshold migration. Existing nativePicker behavior does not change when the new
 prop is absent.
 
+Deprecation retains these compatibility paths while making `adaptations` the
+preferred spelling for new code, not only for advanced conditional policies. To
+migrate, replace the legacy prop rather than supplying both props. Express constant
+surfaces with `default` and `rules: []`, and conditional surfaces with the mappings
+in FR7–FR8 and an explicit server fallback. Callers relying on the legacy native
+exceptions in FR8 may keep `nativePicker` during migration; a mapping without an
+exact equivalent MUST NOT be presented as behavior-preserving. Removing the legacy
+props is outside this proposal.
+
 This proposal adds no CSS-variable or context layer. Structural presentation is a
 JavaScript decision because it changes DOM identity, ARIA, focus ownership, and
 native browser controls. The required `default` explicitly selects the complete
@@ -308,6 +334,7 @@ change is separately accepted and implemented.
 | FR5       | Theme integration and nested-provider tests                                      | defaults; root theme; nearest nested theme; changed `md`; equality                                        | a migrated component hardcodes 768px, reads `__adaptations` directly, ignores nearest Theme, or treats `below` as inclusive                                                        |
 | FR6–FR9   | component public-type, compatibility, and behavior tests                         | direct prop; adaptations; forbidden combination; every shorthand row; invalid native policy in any rule   | two policies compete, a shorthand mapping changes, or invalid native policy passes on one viewport and fails only when its rule matches                                            |
 | FR10–FR12 | interaction, focus, and ownership tests                                          | resize/theme change while open/focused; close/reopen; focus return                                        | an active surface swaps trees, loses focus/draft state, BottomSheet chooses policy, or theme rule values affect component structure                                                |
+| FR13      | public prop annotation and consumer-doc review; legacy compatibility tests     | deprecated direct props; preferred constant/conditional adaptations; legacy-only native exceptions       | public props lack `@deprecated` guidance, docs recommend legacy props for new code, migration support disappears, or a non-equivalent mapping is claimed to preserve behavior       |
 | IR1–IR5   | compiler parity, subscription cleanup, controller isolation, bundle/output tests | every width/pointer combination; malformed input; repeated inline rules; Selector/MultiSelector isolation | component and theme queries diverge, a helper leaks publicly, listeners churn/leak, Selector changes MultiSelector, breakpoint-only CSS appears, or a parallel context is required |
 
 ## Decision log
@@ -349,14 +376,21 @@ CSS remains the path for visual values. Adapted policy values can change mounted
 controls, semantics, focus, and native behavior, so neither custom-property reads
 nor duplicate hidden trees provide a correct first-paint implementation.
 
-### DEC-5 — Preserve direct props as compatibility syntax
+### DEC-5 — Deprecate direct props while preserving migration support
 
 **Reference:** `spec:AST-031/DEC-5`
-**Decider:** pending
+**Decider:** `imdreamrunner`, `2026-09-17` (deprecation only)
 
-Selector `presentation` and DateInput/DateTimeInput `nativePicker` retain their
-existing meanings when `adaptations` is absent. The new prop is an explicit advanced
-policy, not a forced migration.
+Selector `presentation` and DateInput/DateTimeInput `nativePicker` are deprecated
+compatibility syntax. They remain supported during migration under FR7–FR9;
+`adaptations` is preferred for all new code, including constant surface choices.
+Migration replaces the legacy prop and preserves FR6's mutual exclusivity, not an
+override or precedence between the two props. Legacy native behaviors with no exact
+adaptation equivalent remain available as described by FR8.
+
+This decision resolves OQ1 without authorizing removal or approving the proposal's
+other behavior changes. There is no removal deadline. The spec remains draft until
+its remaining decisions and requirements receive separate approval.
 
 ### DEC-6 — Adopt AST-012's exclusive `below` edge for Selector
 
@@ -380,8 +414,5 @@ and `adaptations` values.
 
 ## Open questions
 
-- **OQ1 — Should compatibility shorthands be deprecated after migration?**
-  (`human-api`) The first implementation preserves them; removal needs separate
-  evidence and migration.
 - **OQ2 — Should later component value domains admit non-string primitives?**
   (`human-api`) The first consumers use closed string unions only.
