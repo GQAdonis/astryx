@@ -800,18 +800,27 @@ async function main() {
       }
       const currentManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       const verdictPath = path.join(outDir, 'verdict.json');
-      const verdict = fs.existsSync(verdictPath)
-        ? JSON.parse(fs.readFileSync(verdictPath, 'utf8'))
-        : null;
+      let verdict = null;
+      if (fs.existsSync(verdictPath)) {
+        try {
+          verdict = JSON.parse(fs.readFileSync(verdictPath, 'utf8'));
+        } catch (error) {
+          throw new Error(`Refusing to promote: ${verdictPath} is unreadable (${error.message}).`);
+        }
+      }
+      // accept() validates the verdict against the current baseline before
+      // writing, including the narrowly allowed full browser refresh.
       const requested = flag('keys');
       const removed = new Set(verdict?.removed ?? []);
+      // The dispatch form invites "a, b" — trim each key before it meets the
+      // key validation in accept().
       const named =
         !requested || requested === 'all'
           ? [
               ...Object.keys(currentManifest.shots),
               ...(has('prune') ? removed : []),
             ]
-          : requested.split(',').filter(Boolean);
+          : requested.split(',').map(key => key.trim()).filter(Boolean);
       if (new Set(named).size !== named.length) throw new Error('accept repeats a shot key.');
       const prune = has('prune') ? named.filter(key => removed.has(key)) : [];
       const keys = named.filter(key => currentManifest.shots[key]);
@@ -839,6 +848,7 @@ async function main() {
         baselineDir,
         captureDir: outDir,
         currentManifest: baselineManifest,
+        verdict,
         keys,
         reason: flag('reason') ?? '',
         actor: flag('actor') ?? process.env.GITHUB_ACTOR ?? process.env.USER ?? 'unknown',
