@@ -23,9 +23,16 @@ import {Project} from '../../foundation/config/project.mjs';
 import {
   DocsCatalog,
   mergeTopic,
+  problemsInTopic,
+  withSourceTitle,
 } from '../../foundation/discovery/docs-discovery.mjs';
+import {
+  sectionKeyProblems,
+  withSectionKeys,
+} from '../../foundation/discovery/docs-section-key.mjs';
 import {AstryxError} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
+import {parseDoc} from '../../authoring/doctypes/parse.mjs';
 
 /**
  * The project's topics: the built-in ones plus whatever the configured
@@ -56,13 +63,20 @@ export async function loadDocsCatalog(cwd = process.cwd()) {
  */
 export async function loadReferenceDocs(docPath, {lang} = {}) {
   const mod = await import(pathToFileURL(docPath).href);
-  const docs = mod.docs ?? mod.default;
+  const parsed = parseDoc(mod.docs ?? mod.default, path.basename(docPath));
+  if (!('sections' in parsed)) {
+    throw new Error(`${path.basename(docPath)} is not a reference document.`);
+  }
+  const problems = problemsInTopic(parsed);
+  if (problems.length > 0) {
+    throw new Error(
+      `${path.basename(docPath)} is invalid: ${problems.join('; ')}`,
+    );
+  }
+  const docs = parsed;
   if (!lang || lang === 'en') return docs;
 
-  const dir = path.dirname(docPath);
-  const base = path.basename(docPath, '.doc.mjs');
-  const locale = lang === 'dense' ? 'dense' : lang;
-  const translationPath = path.join(dir, `${base}.doc.${locale}.mjs`);
+  const translationPath = overlayPath(docPath, lang);
   if (!fs.existsSync(translationPath)) return docs;
 
   const translationMod = await import(pathToFileURL(translationPath).href);
@@ -86,10 +100,12 @@ export async function loadReferenceDocs(docPath, {lang} = {}) {
     ...docs,
     description: translation.description || docs.description,
     sections: docs.sections.map(
-      (/** @type {import('@astryxdesign/cli/authoring').ReferenceSection} */ section) => {
+      (
+        /** @type {import('@astryxdesign/cli/authoring').ReferenceSection} */ section,
+      ) => {
         const ts = bySection.get(section.title);
         if (!ts) return section;
-        return {
+        const localized = {
           ...section,
           title: ts.title || section.title,
           content: section.content.map(
@@ -99,12 +115,15 @@ export async function loadReferenceDocs(docPath, {lang} = {}) {
             ) => {
               const tb = ts.content?.[bi];
               if (!tb) return block;
-              if (tb.type === 'prose' && block.type === 'prose') return {...block, text: tb.text};
-              if (tb.type === 'list' && block.type === 'list') return {...block, items: tb.items};
+              if (tb.type === 'prose' && block.type === 'prose')
+                return {...block, text: tb.text};
+              if (tb.type === 'list' && block.type === 'list')
+                return {...block, items: tb.items};
               return block;
             },
           ),
         };
+        return withSourceTitle(localized, section.title);
       },
     ),
   };
@@ -127,8 +146,44 @@ export async function loadTopicDoc(entry, {lang} = {}) {
   let doc = await loadReferenceDocs(entry.path, {lang});
   for (const extension of entry.extensions) {
     doc = mergeTopic(doc, await loadReferenceDocs(extension.path, {lang}));
+    // Merging matches on keys, so this holds unless merge itself regresses.
+    const problems = sectionKeyProblems(doc.sections);
+    if (problems.length > 0) {
+      throw new Error(
+        `${path.basename(extension.path)}, extending ${entry.name}, leaves two sections with one key: ${problems.join('; ')}`,
+      );
+    }
   }
-  return doc;
+  // Derived keys are stamped only now, so they never take part in merging.
+  return withSectionKeys(doc);
+}
+
+/** The localized overlays a docs read can apply. */
+export const OVERLAY_LANGUAGES = ['zh', 'dense'];
+
+/**
+ * Where the `lang` overlay of a doc file lives: `{topic}.doc.{lang}.mjs`.
+ * @param {string} docPath
+ * @param {string} lang
+ * @returns {string}
+ */
+function overlayPath(docPath, lang) {
+  return path.join(
+    path.dirname(docPath),
+    `${path.basename(docPath, '.doc.mjs')}.doc.${lang}.mjs`,
+  );
+}
+
+/**
+ * The overlay languages a topic ships for its own file or any extension.
+ * @param {import('../../foundation/discovery/docs-discovery.mjs').DocsTopicEntry} entry
+ * @returns {string[]}
+ */
+export function overlayLanguages(entry) {
+  const files = [entry.path, ...entry.extensions.map(ext => ext.path)];
+  return OVERLAY_LANGUAGES.filter(lang =>
+    files.some(file => fs.existsSync(overlayPath(file, lang))),
+  );
 }
 
 /**
@@ -146,6 +201,7 @@ export async function loadTopicDoc(entry, {lang} = {}) {
  * @returns {Promise<{
  *   catalog: DocsCatalog,
  *   docsData: import('./docs.type.mjs').DocsDetailResponse['data'],
+ *   lang: string | null,
  * }>}
  */
 export async function resolveTopicDocs(topic, options = {}) {
@@ -166,5 +222,5 @@ export async function resolveTopicDocs(topic, options = {}) {
   }
 
   const docsData = await loadTopicDoc(entry, {lang: effectiveLang});
-  return {catalog, docsData};
+  return {catalog, docsData, lang: effectiveLang};
 }

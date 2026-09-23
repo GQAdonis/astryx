@@ -201,6 +201,8 @@ astryx docs theme --dense # theme provider, light/dark, overrides
 astryx component --list # all components grouped by category
 astryx template --list # available page templates
 ON DEMAND:
+astryx docs <topic> --index # section index: one line per section, with its key
+astryx docs <topic> <section> # one section, by key or title
 astryx component <Name> --dense # props, variants, usage, anatomy for one component
 astryx template <name> # emit full page source
 astryx template <name> --skeleton # layout skeleton with spatial annotations

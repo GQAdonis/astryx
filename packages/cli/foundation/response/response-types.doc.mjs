@@ -69,9 +69,14 @@ export const doc = {
         "One topic's full ReferenceDoc, with token-ref blocks inlined.",
     },
     {
+      value: 'docs.index',
+      description:
+        "One topic's section index (--index): each section's key, title, and one-line summary.",
+    },
+    {
       value: 'docs.detail.section',
       description:
-        'A single ReferenceSection of a topic: the first whose title contains the section query.',
+        'One ReferenceSection of a topic, found by key or title, with token-ref blocks inlined.',
     },
 
     // blog (read from the published RSS feed)

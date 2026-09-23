@@ -5,6 +5,7 @@
  */
 
 import type {
+  AuthoredDocGraphFields,
   ComponentAccessibilityRequirement,
   ComponentAnatomyElement,
   ComponentBestPractice,
@@ -24,7 +25,7 @@ import type {
  * Shared fields between single-component and multi-component docs.
  * Do not use this interface directly — use `ComponentDoc` (the union type).
  */
-export interface ComponentBaseDoc {
+export interface ComponentBaseDoc extends AuthoredDocGraphFields {
   /** Doc-kind discriminant for the stamped default-export format
    *  (`export default { type: 'component', ... }`). Optional: legacy
    *  `export const docs = {...}` docs omit it, and `parseDoc` falls back to
@@ -49,7 +50,7 @@ export interface ComponentBaseDoc {
   import?: string;
   /** Search keywords for CLI discovery. Terms a developer might type when
    *  looking for this component: synonyms, related UI concepts, and common
-   *  names from other design systems (MUI, Chakra, Radix, shadcn).
+   *  names from other design systems (MUI, Chakra, Radix, and others).
    *  Lowercase only. Used by `astryx component <term>` for fuzzy matching.
    *  e.g. `['accordion', 'expand', 'toggle', 'disclosure']` for Collapsible */
   keywords?: string[];

@@ -11,9 +11,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {DocsCatalog} from '../../foundation/discovery/docs-discovery.mjs';
 import {
   doctor,
+  checkAuthoringDocs,
+  checkDocsProgressiveDisclosure,
   checkImplicitIntegrations,
+  checkProviderIdentity,
   checkVersionAlignment,
   checkPackageManager,
 } from './doctor.mjs';
@@ -214,6 +218,77 @@ describe('checkPackageManager', () => {
   });
 });
 
+describe('checkProviderIdentity', () => {
+  /** @param {object} [fields] */
+  const loaded = (fields = {}) => ({
+    name: '@acme/widgets',
+    providerId: '@acme/widgets',
+    version: '1.0.0',
+    __spec: '@acme/widgets',
+    __packageDir: '/abs/node_modules/@acme/widgets',
+    __manifestFile: '/abs/node_modules/@acme/widgets/astryx.integration.mjs',
+    ...fields,
+  });
+
+  it('skips when the project could not be read', () => {
+    expect(checkProviderIdentity({integrations: null}).status).toBe('info');
+  });
+
+  it('reports none when nothing is loaded', () => {
+    const c = checkProviderIdentity({integrations: []});
+    expect(c.status).toBe('info');
+    expect(c.message).toContain('None');
+  });
+
+  it('passes when each loaded integration has its own provider ID', () => {
+    const c = checkProviderIdentity({
+      integrations: [
+        loaded(),
+        loaded({
+          name: '@acme/charts',
+          providerId: '@acme/charts',
+          __spec: '@acme/charts',
+        }),
+      ],
+    });
+    expect(c.status).toBe('pass');
+    expect(c.message).toContain('2 loaded integrations');
+  });
+
+  it('warns and names both packages when a later claimant is set aside', () => {
+    const message =
+      '@acme/renamed@2.0.0 and @acme/widgets@1.0.0 both claim provider ID ' +
+      '"@acme/widgets". @acme/widgets@1.0.0 loads first and is used; ' +
+      '@acme/renamed@2.0.0 contributes nothing until one package changes ' +
+      'its providerId.';
+    const c = checkProviderIdentity({
+      integrations: [
+        loaded(),
+        loaded({
+          name: '@acme/renamed',
+          version: '2.0.0',
+          __spec: '@acme/renamed',
+          __providerConflict: {
+            providerId: '@acme/widgets',
+            claimedBy: '@acme/widgets',
+            message,
+          },
+        }),
+      ],
+    });
+    expect(c.status).toBe('warn');
+    expect(c.message).toBe(message);
+    expect(c.fix).toContain('providerId');
+  });
+
+  it('is part of the report doctor returns', async () => {
+    const r = await doctor({cwd});
+    expect(r.data.checks.map(check => check.id)).toContain(
+      'provider-identity',
+    );
+  }, SLOW);
+});
+
 describe('checkImplicitIntegrations', () => {
   /** @param {object} [fields] */
   const autolinked = (fields = {}) => ({
@@ -296,4 +371,125 @@ describe('checkImplicitIntegrations', () => {
     const r = await doctor({cwd});
     expect(r.data.checks.map(c => c.id)).toContain('implicit-integrations');
   }, SLOW);
+});
+
+describe('checkDocsProgressiveDisclosure', () => {
+  it('passes when every topic index and section fits one read', async () => {
+    const c = await checkDocsProgressiveDisclosure({
+      docsCatalog: DocsCatalog.fromBuiltins(),
+      docsCatalogIssues: [],
+    });
+    expect(c).toMatchObject({id: 'docs-progressive-disclosure', status: 'pass'});
+    expect(c.message).toMatch(/^\d+ topics: /);
+  }, SLOW);
+
+  it('fails on an invalid doc an integration contributed', async () => {
+    const c = await checkDocsProgressiveDisclosure({
+      docsCatalogIssues: [
+        {
+          package: '@acme/widgets',
+          code: 'invalid_doc',
+          severity: 'error',
+          message: 'bad.doc.mjs exports no doc',
+        },
+      ],
+    });
+    expect(c.status).toBe('fail');
+    expect(c.message).toBe('@acme/widgets: bad.doc.mjs exports no doc');
+  });
+
+  it('fails when the docs catalog cannot be built', async () => {
+    const c = await checkDocsProgressiveDisclosure({docsCatalogError: 'boom'});
+    expect(c.status).toBe('fail');
+    expect(c.message).toContain('boom');
+  });
+
+  it('names a section over the budget and a topic that fails to load', async () => {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-docs-'));
+    tmpDirs.push(dir);
+    const huge = {
+      name: 'huge',
+      title: 'Huge',
+      description: 'Too big for one read.',
+      sections: [
+        {title: 'Small', content: [{type: 'prose', text: 'Fits.'}]},
+        {title: 'Everything', content: [{type: 'prose', text: 'x'.repeat(40 * 1024)}]},
+      ],
+    };
+    fs.writeFileSync(
+      path.join(dir, 'huge.doc.mjs'),
+      `export const docs = ${JSON.stringify(huge)};\n`,
+    );
+    fs.writeFileSync(path.join(dir, 'broken.doc.mjs'), 'export const docs = {;\n');
+    const c = await checkDocsProgressiveDisclosure({
+      docsCatalog: DocsCatalog.fromBuiltins({
+        huge: path.join(dir, 'huge.doc.mjs'),
+        broken: path.join(dir, 'broken.doc.mjs'),
+      }),
+      docsCatalogIssues: [],
+    });
+    expect(c.status).toBe('fail');
+    expect(c.message).toMatch(/^2 problems: /);
+    expect(c.message).toContain('huge everything: 41 KB, over the 32 KB one read may return');
+    expect(c.message).toContain('broken: ');
+    expect(c.message).not.toContain('huge small');
+  });
+});
+
+describe('checkAuthoringDocs', () => {
+  it('passes when every authoring self-doc is reachable and fits one read', async () => {
+    const c = await checkAuthoringDocs();
+    expect(c).toMatchObject({id: 'authoring-docs', status: 'pass'});
+    expect(c.message).toContain('astryx docs authoring');
+  }, SLOW);
+});
+
+describe('doctor docs checks', () => {
+  it('runs both docs checks and they pass on the repo', async () => {
+    const r = await doctor({cwd});
+    const byId = Object.fromEntries(r.data.checks.map(c => [c.id, c.status]));
+    expect(byId['authoring-docs']).toBe('pass');
+    expect(byId['docs-progressive-disclosure']).toBe('pass');
+  }, SLOW);
+});
+
+describe('checkDocsProgressiveDisclosure languages', () => {
+  it('checks every overlay a topic ships, not only English', async () => {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-lang-'));
+    tmpDirs.push(dir);
+    const deploying = {
+      name: 'deploying',
+      title: 'Deploying',
+      description: 'Ship it.',
+      sections: [{title: 'Overview', content: [{type: 'prose', text: 'Push the button.'}]}],
+    };
+    fs.writeFileSync(
+      path.join(dir, 'deploying.doc.mjs'),
+      `export const docs = ${JSON.stringify(deploying)};\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, 'deploying.doc.zh.mjs'),
+      "throw new Error('zh overlay broken');\n",
+    );
+    fs.writeFileSync(
+      path.join(dir, 'deploying.doc.dense.mjs'),
+      `export const docsDense = ${JSON.stringify({
+        sections: [
+          {
+            section: 'Overview',
+            title: 'Overview',
+            content: [{type: 'prose', text: 'x'.repeat(40 * 1024)}],
+          },
+        ],
+      })};\n`,
+    );
+    const c = await checkDocsProgressiveDisclosure({
+      docsCatalog: DocsCatalog.fromBuiltins({deploying: path.join(dir, 'deploying.doc.mjs')}),
+      docsCatalogIssues: [],
+    });
+    expect(c.status).toBe('fail');
+    expect(c.message).toContain('deploying [zh]: zh overlay broken');
+    expect(c.message).toContain('deploying [dense] overview: 41 KB');
+    expect(c.message).not.toMatch(/deploying overview:/);
+  });
 });
