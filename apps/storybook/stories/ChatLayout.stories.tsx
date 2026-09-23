@@ -472,9 +472,7 @@ export const FullAIChat: StoryObj = {
             placeholder="Ask about the codebase..."
           />
         }
-        footerActions={
-          <Button label="Claude Opus" variant="ghost" size="md" />
-        }
+        footerActions={<Button label="Claude Opus" variant="ghost" size="md" />}
         sendActions={
           <Button
             label="Microphone"
@@ -844,6 +842,116 @@ export const WithEmptyState: StoryObj = {
         }>
         {[]}
       </ChatLayout>
+    </div>
+  ),
+};
+
+const DENSITIES = ['compact', 'balanced', 'spacious'] as const;
+/**
+ * The three densities side by side. Density is a prop, not an automatic
+ * container-width adaptation: it selects the dock's inline and block-end
+ * padding, the message area's max-width and inline padding, and the height and
+ * mask of the frosted glass blur layer.
+ */
+export const Densities: StoryObj = {
+  name: 'Densities',
+  render: () => (
+    <div
+      style={{
+        display: 'flex',
+        gap: 16,
+        height: '100vh',
+        padding: 16,
+        boxSizing: 'border-box',
+      }}>
+      {DENSITIES.map(density => (
+        <div
+          key={density}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+          <strong style={{paddingBlockEnd: 8}}>{density}</strong>
+          <ChatLayout
+            density={density}
+            composer={
+              <ChatComposer onSubmit={() => {}} placeholder="Reply…" />
+            }>
+            <ChatMessageList density={density}>
+              <ChatSystemMessage variant="divider">Today</ChatSystemMessage>
+              <ChatMessage sender="user">
+                <ChatMessageBubble>
+                  How does density change the layout?
+                </ChatMessageBubble>
+              </ChatMessage>
+              <ChatMessage sender="assistant">
+                <ChatMessageBubble>
+                  It sets the dock padding, the message column width, and the
+                  height of the blur behind the composer.
+                </ChatMessageBubble>
+              </ChatMessage>
+            </ChatMessageList>
+          </ChatLayout>
+        </div>
+      ))}
+    </div>
+  ),
+};
+
+const AFFORDANCE_TURNS = [
+  'What does the scroll-to-bottom button do?',
+  'It appears once you scroll away from the newest message.',
+  'And when I am already at the bottom?',
+  'Then it is hidden, and it must not take keyboard focus.',
+  'Why does that matter?',
+  'Focus landing on something invisible has no visible focus indicator.',
+  'So the hidden state has to leave the tab order.',
+  'Exactly — opacity alone does not do that.',
+  'What removes it?',
+  'visibility: hidden, carried on the same transition so the fade still plays.',
+  'Does the visible button stay reachable?',
+  'Yes. Hiding it from the keyboard only applies while it paints nothing.',
+];
+
+/**
+ * Deterministic fixture for the scroll-to-bottom affordance: a bounded,
+ * self-scrolling ChatLayout with static content and a sentinel control in
+ * front of it. Scrolling away from the bottom reveals the affordance and
+ * scrolling back hides it, so one story reaches the hidden, visible, and
+ * re-hidden states without timers, streaming, or `new Date()`.
+ *
+ * Drives the exact-head keyboard and theme-size evidence in
+ * `ChatLayoutScrollButton.a11y.chromium.spec.ts`.
+ */
+export const ScrollAffordanceStates: StoryObj = {
+  name: 'Scroll Affordance States',
+  render: () => (
+    <div style={{padding: 16}}>
+      <button type="button">Before chat</button>
+      <div
+        style={{
+          height: 420,
+          marginBlockStart: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+        <ChatLayout
+          composer={<ChatComposer onSubmit={() => {}} placeholder="Reply…" />}>
+          <ChatMessageList>
+            {AFFORDANCE_TURNS.map((text, index) => (
+              <ChatMessage
+                key={text}
+                sender={index % 2 === 0 ? 'user' : 'assistant'}>
+                <ChatMessageBubble>{text}</ChatMessageBubble>
+              </ChatMessage>
+            ))}
+          </ChatMessageList>
+        </ChatLayout>
+      </div>
     </div>
   ),
 };
