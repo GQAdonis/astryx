@@ -51,8 +51,8 @@ Options:
 
 - `--type <component|hook|doc|template>`: restrict to a single domain
 - `--limit <n>`: cap the number of results (default 20)
-- `--detail`: include the import path and the match reason/score
-- `--json`: typed `{ type: 'search', data: { query, matchCount, results } }` envelope — `matchCount` is how many candidates matched in total, `results` the slice `--limit` allowed
+- `--verbose`: also print each result's match score and reason
+- `--json`: typed `{ apiVersion, type: 'search', data: { query, matchCount, results } }` envelope — `matchCount` is how many candidates matched in total, `results` the slice `--limit` allowed
 
 ## Commands
 
