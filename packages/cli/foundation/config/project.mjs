@@ -260,13 +260,15 @@ function findPackageRoot(startDir) {
  *
  * This governs INHERITED handlers only. A project's own `debug` always runs.
  *
- * @param {string|null} configPath
+ * Read from the project root whether or not an astryx.config exists: an
+ * autolinked integration contributes a handler with no config at all.
+ *
+ * @param {string} projectDir directory holding the project's package.json
  * @returns {boolean}
  */
-function inheritsIntegrationDebug(configPath) {
-  if (!configPath) return true;
+function inheritsIntegrationDebug(projectDir) {
   try {
-    const pkgPath = path.join(path.dirname(configPath), 'package.json');
+    const pkgPath = path.join(projectDir, 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
     return pkg?.astryx?.inheritDebug !== false;
   } catch {
@@ -447,7 +449,7 @@ export class Project {
       // because Project.load can run more than once in a process and appending
       // would deliver twice.
       setDebugIntegrationEventHandlers(
-        inheritsIntegrationDebug(configPath)
+        inheritsIntegrationDebug(projectDir)
           ? loadedIntegrations.map(integration => integration.__debug)
           : [],
       );
