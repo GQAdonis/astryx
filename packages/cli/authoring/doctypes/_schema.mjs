@@ -11,10 +11,18 @@
 
 import {z} from 'zod';
 
-/** @typedef {import('./base/type').AuthoredDocGraphFields} AuthoredDocGraphFieldsType */
-/** @typedef {import('./base/type').AuthoredDocKind} AuthoredDocKind */
-/** @typedef {import('./namespace/type').NamespaceDoc} NamespaceDoc */
-/** @typedef {import('./reference/type').ReferenceContentBlock} ReferenceContentBlock */
+/** @typedef {import('./base/type.js').AuthoredDocGraphFields} AuthoredDocGraphFieldsType */
+/** @typedef {import('./base/type.js').AuthoredDocKind} AuthoredDocKind */
+/** @typedef {import('./namespace/type.js').NamespaceDoc} NamespaceDoc */
+/** @typedef {import('./reference/type.js').ReferenceContentBlock} ReferenceContentBlock */
+/** @typedef {import('./reference/type.js').ReferenceDoc} ReferenceDoc */
+/** @typedef {import('./component/type.js').SingleComponentDoc} SingleComponentDoc */
+/** @typedef {import('./base/type.js').ComponentPropDoc} ComponentPropDoc */
+/** @typedef {import('./hook/type.js').HookDoc} HookDoc */
+/** @typedef {import('./function/type.js').FunctionDoc} FunctionDoc */
+/** @typedef {import('./schema/type.js').SchemaDoc} SchemaDoc */
+/** @typedef {import('./command/type.js').CommandDoc} CommandDoc */
+/** @typedef {import('./enum/type.js').EnumDoc} EnumDoc */
 
 const nonEmptyString = z.string().min(1);
 
@@ -30,6 +38,12 @@ export const AuthoredDocKindSchema = z.enum([
   'enum',
   'namespace',
 ]);
+
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').Equal<z.infer<typeof AuthoredDocKindSchema>, AuthoredDocKind>
+ * >} _AuthoredDocKindDriftLock
+ */
 
 /** Shared optional graph fields for every authored doc kind. */
 export const AuthoredDocGraphFields = {
@@ -48,8 +62,8 @@ export const AuthoredDocGraphFields = {
 const _AuthoredDocGraphSchema = z.object(AuthoredDocGraphFields).strict();
 
 /**
- * @typedef {import('../_shared/contract').Expect<
- *   import('../_shared/contract').MutuallyAssignable<
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
  *     z.infer<typeof _AuthoredDocGraphSchema>,
  *     AuthoredDocGraphFieldsType
  *   >
@@ -161,8 +175,8 @@ export const ReferenceContentBlockSchema = z.discriminatedUnion('type', [
 ]);
 
 /**
- * @typedef {import('../_shared/contract').Expect<
- *   import('../_shared/contract').Equal<
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').Equal<
  *     z.infer<typeof ReferenceContentBlockSchema>,
  *     ReferenceContentBlock
  *   >
@@ -245,10 +259,57 @@ const ComponentBaseSchema = z
   })
   .passthrough();
 
-/** New-format stamped component doc (`type: 'component'`). */
+/**
+ * One entry in a group doc's `components`: a full ComponentEntry or a
+ * name-only ComponentRef. Readers look every entry up by `name`, so that much
+ * is checked here; the rest passes through, as on an unstamped doc.
+ */
+const ComponentGroupEntrySchema = z
+  .object({name: z.string().min(1, 'component name is required')})
+  .passthrough();
+
+/**
+ * New-format stamped component doc (`type: 'component'`): one component's
+ * `props`, or the `components` a group doc documents together. These are the
+ * shapes the published ComponentDoc type allows, and the ones an unstamped doc
+ * may already take.
+ */
 export const ComponentDocKindSchema = ComponentBaseSchema.extend({
-  props: z.array(PropSchema),
+  props: z.array(PropSchema).optional(),
+  components: z.array(ComponentGroupEntrySchema).optional(),
+}).superRefine((doc, context) => {
+  if (doc.props == null && doc.components == null) {
+    context.addIssue({
+      code: 'custom',
+      path: ['props'],
+      message:
+        'expected the props array, or `components` for a doc that groups several components',
+    });
+  }
 });
+
+/**
+ * A stamped component doc as it loads. The loader accepts what the unstamped
+ * format always accepted, so stamping an existing doc never breaks it:
+ * `displayName` may be missing, `category` is any string, `usage`, `theming`,
+ * `playground` and `examples` pass through unchecked, and a doc has `props`,
+ * `components`, or both; each `components` entry needs only a `name`. Every
+ * other field matches the published type.
+ *
+ * @typedef {Omit<SingleComponentDoc,
+ *     'type' | 'displayName' | 'category' | 'usage' | 'theming' | 'examples' | 'playground' | 'props'>
+ *   & {type: 'component', displayName?: string, category?: string, usage?: unknown,
+ *     theming?: unknown, examples?: unknown[], playground?: unknown,
+ *     props?: ComponentPropDoc[], components?: Array<{name: string}>}} LoadedComponentDoc
+ */
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof ComponentDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<LoadedComponentDoc>
+ *   >
+ * >} _ComponentDocDriftLock
+ */
 
 /** Return entry for generalized function docs. */
 const FunctionReturnSchema = z
@@ -268,6 +329,28 @@ export const FunctionDocKindSchema = z
     returns: z.array(FunctionReturnSchema),
   })
   .passthrough();
+
+/**
+ * A stamped function doc as it loads: as with components, `displayName` may be
+ * missing and `usage` passes through unchecked.
+ *
+ * @typedef {Omit<FunctionDoc, 'type' | 'displayName' | 'usage'>
+ *   & {type: 'function', displayName?: string, usage?: unknown}} LoadedFunctionDoc
+ */
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof FunctionDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<LoadedFunctionDoc>
+ *   >
+ * >} _FunctionDocDriftLock
+ */
+
+/**
+ * Every HookDoc is a FunctionDoc, so the one function schema covers both.
+ *
+ * @typedef {import('../_shared/contract.js').Expect<[HookDoc] extends [FunctionDoc] ? true : false>} _HookDocIsFunctionDocLock
+ */
 
 /**
  * Stamped generic reference/topic doc (`type: 'generic'`). `title` and
@@ -308,9 +391,30 @@ export const GenericDocKindSchema = z
     });
   });
 
+/**
+ * A stamped generic doc as the load check accepts it. `title`, `description`
+ * and `sections` may be missing, as in docs the v0.3.0 factory-removal codemod
+ * produced; `parseReference` then fills them (title from `displayName` or
+ * `name`, an empty description, no sections), so its result is a full
+ * ReferenceDoc. Only a doc with a description and sections is a usable topic
+ * (see `problemsInTopic`).
+ *
+ * @typedef {Omit<ReferenceDoc, 'type' | 'title' | 'description' | 'sections'>
+ *   & {type: 'generic'}
+ *   & Partial<Pick<ReferenceDoc, 'title' | 'description' | 'sections'>>} LoadedReferenceDoc
+ */
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof GenericDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<LoadedReferenceDoc>
+ *   >
+ * >} _ReferenceDocDriftLock
+ */
+
 /** Recursive field descriptor for a SchemaDoc. */
 const SchemaFieldSchema =
-  /** @type {import('zod').ZodType<import('./schema/type').SchemaFieldDoc>} */ (
+  /** @type {import('zod').ZodType<import('./schema/type.js').SchemaFieldDoc>} */ (
     z.lazy(() =>
       z
         .object({
@@ -350,6 +454,15 @@ export const SchemaDocKindSchema = z
     notes: z.array(ReferenceContentBlockSchema).optional(),
   })
   .passthrough();
+
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof SchemaDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<SchemaDoc & {type: 'schema'}>
+ *   >
+ * >} _SchemaDocDriftLock
+ */
 
 /** New stamped command doc (`type: 'command'`). */
 export const CommandDocKindSchema = z
@@ -411,6 +524,15 @@ export const CommandDocKindSchema = z
   })
   .passthrough();
 
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof CommandDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<CommandDoc & {type: 'command'}>
+ *   >
+ * >} _CommandDocDriftLock
+ */
+
 /** New stamped enum doc (`type: 'enum'`). */
 export const EnumDocKindSchema = z
   .object({
@@ -431,6 +553,15 @@ export const EnumDocKindSchema = z
     ),
   })
   .passthrough();
+
+/**
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').MutuallyAssignable<
+ *     import('../_shared/contract.js').NamedFields<z.infer<typeof EnumDocKindSchema>>,
+ *     import('../_shared/contract.js').NamedFields<EnumDoc & {type: 'enum'}>
+ *   >
+ * >} _EnumDocDriftLock
+ */
 
 const NamespaceSlotSchema = z
   .object({
@@ -514,8 +645,8 @@ export const NamespaceDocKindSchema = z
   });
 
 /**
- * @typedef {import('../_shared/contract').Expect<
- *   import('../_shared/contract').Equal<
+ * @typedef {import('../_shared/contract.js').Expect<
+ *   import('../_shared/contract.js').Equal<
  *     z.infer<typeof NamespaceDocKindSchema>,
  *     NamespaceDoc
  *   >
