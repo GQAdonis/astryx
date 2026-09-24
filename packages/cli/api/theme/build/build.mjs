@@ -12,9 +12,10 @@
  * - A .d.ts (plus an optional .variants.d.ts for custom prop values)
  *
  * It performs the writes and returns a `theme.build` receipt — its `warnings`
- * carry override problems and any fonts the theme names but does not load
- * (font-warning.mjs) — or `null` when the theme produced no CSS (nothing to
- * build). Errors throw AstryxError (with
+ * carry override problems, every declaration core's generator dropped because
+ * its value could not stay one CSS declaration, and any fonts the theme names
+ * but does not load (font-warning.mjs) — or `null` when the theme produced no
+ * CSS (nothing to build). Errors throw AstryxError (with
  * a stable code). Human progress is emitted through the shared `logger`
  * (silent by default), so the CLI keeps its exact output while a programmatic
  * caller stays quiet.
@@ -2303,7 +2304,15 @@ async function themeBuildInternal(
     const scopeSelector = themeScopeStart(themeDef.name);
     const scopeTo = THEME_SCOPE_TO;
 
-    const {component, prose} = _generateThemeRulesSplit(resolvedTheme);
+    // Older cores ignore this optional collector. Current core writes the same
+    // warning text here that runtime callers receive on the console.
+    /** @type {string[]} */
+    const droppedDeclarations = [];
+
+    const {component, prose} = _generateThemeRulesSplit(
+      resolvedTheme,
+      droppedDeclarations,
+    );
     const cssParts = [];
     // Prose element defaults always ship — the `<Theme>` runtime
     // (generateThemeCSS) always emits them, so the build must too, or the
@@ -2322,7 +2331,7 @@ async function themeBuildInternal(
     let adaptationCss;
     try {
       adaptationCss = _generateAdaptationCSS
-        ? _generateAdaptationCSS(resolvedTheme)
+        ? _generateAdaptationCSS(resolvedTheme, droppedDeclarations)
         : {component: '', prose: ''};
     } catch (error) {
       const message =
@@ -2368,10 +2377,15 @@ async function themeBuildInternal(
     // adaptations on the same resolved leaf.
     let onMediaCss = '';
     if (_generateOnMediaCSS) {
-      onMediaCss = _generateOnMediaCSS(resolvedTheme);
+      onMediaCss = _generateOnMediaCSS(resolvedTheme, droppedDeclarations);
       if (onMediaCss) {
         cssParts.push(`@layer astryx-theme {\n${onMediaCss}\n}`);
       }
+    }
+    for (const message of droppedDeclarations) {
+      const w = `Declaration ${message}. The generated CSS omits it; fix the value in the theme source.`;
+      warningMessages.push(w);
+      logger.warn(`  ⚠ ${w}`);
     }
     if (cssParts.length === 0) {
       logger.log('No overrides found — nothing to build.');
