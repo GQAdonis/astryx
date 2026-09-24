@@ -93,7 +93,7 @@ export const doc = {
     },
     {
       code: 'ERR_PATH_TRAVERSAL',
-      when: 'the theme name contains a path separator or traversal marker',
+      when: 'the theme name contains a path separator or traversal marker, or a relative `out` path resolves outside cwd (including through a symlink)',
     },
     {
       code: 'ERR_CORE_NOT_FOUND',
@@ -105,7 +105,7 @@ export const doc = {
     },
     {
       code: 'ERR_WRITE_FAILED',
-      when: 'writing the outputs fails (staged temp files are rolled back)',
+      when: 'creating the output directory or writing the outputs fails (staged temp files are rolled back)',
     },
   ],
   examples: [
