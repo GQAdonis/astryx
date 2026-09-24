@@ -29,7 +29,7 @@ export const doc = {
     {
       flag: '--limit <n>',
       param: 'options.limit',
-      description: 'Max number of results (default 20)',
+      description: 'Max number of results, a positive integer (default 20)',
     },
     {
       flag: '--verbose',
@@ -47,7 +47,7 @@ export const doc = {
     {code: 0, when: 'success (including zero matches)'},
     {
       code: 1,
-      when: 'invalid --type or a non-positive --limit, or @astryxdesign/core cannot be found',
+      when: 'invalid --type, a --limit that is not a positive integer, or @astryxdesign/core cannot be found',
     },
   ],
   related: ['component', 'hook', 'docs', 'template', 'build'],
