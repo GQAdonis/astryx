@@ -562,7 +562,6 @@ jobs:
     permissions:
       contents: read
     outputs:
-      storybook_url: ${{ steps.urls.outputs.storybook_url }}
       short_hash: ${{ steps.release.outputs.short_hash || steps.urls.outputs.short_hash }}
       sandbox_url: ${{ steps.urls.outputs.sandbox_url }}
       pr_number: ${{ steps.urls.outputs.pr_number }}
@@ -664,7 +663,6 @@ jobs:
 
           echo "short_hash=${SHORT_HASH}" >> $GITHUB_OUTPUT
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-          echo "storybook_url=https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${PR_NUMBER}/" >> $GITHUB_OUTPUT
           echo "sandbox_url=https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${PR_NUMBER}/sandbox/" >> $GITHUB_OUTPUT
 
       - name: Identify full release audit scope
@@ -715,14 +713,9 @@ jobs:
       - name: Write PR comment metadata
         if: needs.check-scope.outputs.docsite_only != 'true' && needs.check-scope.outputs.spec_only != 'true' && needs.check-scope.outputs.tooling_only != 'true' && github.event_name == 'pull_request'
         run: |
-          # The pr-comment and deploy-preview workflows run on workflow_run
-          # (privileged token), so they can comment on and deploy previews for
-          # fork PRs too. Neither context knows the PR number, preview URLs, or
-          # the artifact hash, so persist them here for the trusted jobs to read.
-          #
-          # Preview URLs are now populated for ALL PRs (fork and same-repo alike)
-          # because deploy-preview.yml deploys every PR's preview from the trusted
-          # context — the old fork/same-repo split (empty URLs on forks) is gone.
+          # PR Comment reads this exact-run analysis. Storybook preview links
+          # come from the exact-head Vercel deployment; the Sandbox artifact
+          # remains on Pages until its separate migration.
           cat > pr-meta.json <<EOF
           {
             "prNumber": "${{ steps.urls.outputs.pr_number }}",
@@ -846,13 +839,10 @@ jobs:
             *) exit 1 ;;
           esac
 
-  # NOTE: PR preview deploy has moved to deploy-preview.yml (workflow_run).
-  # It used to live here as a `deploy-preview` job, but a pull_request job on a
-  # fork gets a read-only GITHUB_TOKEN and can't push to gh-pages — so previews
-  # only ever appeared on same-repo PRs. The trusted workflow_run companion runs
-  # in the base-repo context with a write token, downloads the static artifacts
-  # this workflow already uploads (storybook-<hash>, sandbox-<hash>), and deploys
-  # for EVERY PR (fork and same-repo alike) without executing any PR code.
+  # CI keeps Storybook's static artifact for visual, accessibility, and RTL
+  # checks. The Vercel Preview deployment independently hosts human Storybook;
+  # the trusted deploy-preview.yml workflow still publishes only Sandbox to Pages
+  # after CI for fork and same-repository PRs without running PR code.
 
   # Accessibility audit
   # Skipped when no components changed. Depends only on build-storybook, so it

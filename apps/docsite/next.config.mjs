@@ -1,5 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+/**
+ * @file Configure the docsite's routes, response headers, and theme resolution.
+ * @input Next.js build configuration and staged Storybook static export.
+ * @output Docsite routes plus preview-only Storybook HTML at /storybook/.
+ * @position Next.js configuration for the existing Vercel docsite deployment.
+ */
+
 import {readdirSync} from 'node:fs';
 import {resolve} from 'node:path';
 
@@ -8,8 +15,13 @@ const nextConfig = {
   cacheComponents: true,
   // A dynamic route segment can't carry a static extension, so the public
   // plaintext URL /blog/<slug>.txt is served by the /blog/txt/[slug] handler.
+  // Storybook's exported index.html is a static file, not a Next.js route.
+  // Its other files are served directly from public/ before this rewrite.
   async rewrites() {
-    return [{source: '/blog/:slug.txt', destination: '/blog/txt/:slug'}];
+    return [
+      {source: '/blog/:slug.txt', destination: '/blog/txt/:slug'},
+      {source: '/storybook', destination: '/storybook/index.html'},
+    ];
   },
   // The playground preview evaluates user-authored code, so it is the one
   // route that must never be embeddable by another site and never a loader of
