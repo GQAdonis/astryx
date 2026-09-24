@@ -165,7 +165,7 @@ export async function component(name, options = {}) {
           : componentDetailShowcase(dirName, {cwd, name, resolve: false});
       }
       if (blocks) {
-        return componentDetailBlocks(dirName);
+        return componentDetailBlocks(dirName, cwd);
       }
       const docs = await loadComponentDoc(owner.docPath, docOpts);
       if (props) return componentDetailProps(docs);
@@ -183,7 +183,7 @@ export async function component(name, options = {}) {
         return componentDetailSource(dirName, null, {name, notFoundInPackage: packageScope});
       }
       if (blocks) {
-        return componentDetailBlocks(dirName);
+        return componentDetailBlocks(dirName, cwd);
       }
       const docs = await loadComponentDoc(extDocPath, docOpts);
       if (props) return componentDetailProps(docs);
@@ -224,7 +224,7 @@ export async function component(name, options = {}) {
 
   // ── Blocks mode ──────────────────────────────────────────────
   if (blocks) {
-    return componentDetailBlocks(dirName);
+    return componentDetailBlocks(dirName, cwd);
   }
 
   // ── Sub-component scoping ────────────────────────────────────
